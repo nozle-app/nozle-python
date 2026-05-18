@@ -5,7 +5,7 @@ Python SDK for usage tracking, margin intelligence, and entitlement checks.
 ## Install
 
 ```bash
-pip install nozle
+pip install nozle-sdk
 ```
 
 ## Quick Start
@@ -48,7 +48,7 @@ client.margin.trend(granularity="day")         # margin trend over time
 ## Optional: OpenAI Integration
 
 ```bash
-pip install nozle[openai]
+pip install nozle-sdk-sdk[openai]
 ```
 
 ## License
