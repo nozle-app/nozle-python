@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "nozle"
+version = "0.1.0"
+description = "Nozle SDK — usage tracking, margin intelligence, and entitlement checks for AI billing"
+readme = "README.md"
+license = "AGPL-3.0-or-later"
+requires-python = ">=3.9"
+authors = [
+    { name = "Nozle", email = "dev@nozle.ai" },
+]
+keywords = ["billing", "usage-tracking", "margin", "ai", "metering", "entitlements"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+dependencies = ["requests>=2.28"]
+
+[project.optional-dependencies]
+openai = ["openai>=1.0"]
+dev = ["pytest>=7.0", "requests-mock>=1.11"]
+
+[project.urls]
+Homepage = "https://nozle.ai"
+Repository = "https://github.com/nozle-app/nozle-python"
+Issues = "https://github.com/nozle-app/nozle-python/issues"
+
+[tool.setuptools.packages.find]
+include = ["nozle*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
