@@ -4,7 +4,7 @@ from nozle import Nozle, __version__
 
 
 def test_version():
-    assert __version__ == "0.1.0"
+    assert __version__ == "0.2.0"
 
 
 def test_client_init():
@@ -72,3 +72,62 @@ def test_margin_trend(mock_get):
     client.margin.trend(granularity="week")
     _, kwargs = mock_get.call_args
     assert kwargs["params"]["granularity"] == "week"
+
+
+@patch("nozle.client.requests.get")
+def test_plans(mock_get):
+    mock_get.return_value = MagicMock(
+        json=lambda: {"plans": [{"code": "pro", "name": "Pro", "amount_cents": 2900}]}
+    )
+    client = Nozle("key")
+    plans = client.plans()
+    assert len(plans) == 1
+    assert plans[0]["code"] == "pro"
+    mock_get.assert_called_once_with(
+        "http://localhost:8080/v1/plans",
+        headers={"Authorization": "Bearer key"},
+        timeout=10,
+    )
+
+
+@patch("nozle.client.requests.post")
+def test_checkout(mock_post):
+    mock_post.return_value = MagicMock(
+        json=lambda: {
+            "client_secret": "cs_test_123",
+            "invoice_id": "inv_123",
+            "amount_cents": 2900,
+            "currency": "USD",
+        }
+    )
+    client = Nozle("key")
+    result = client.checkout("cust_1", "pro")
+    assert result["client_secret"] == "cs_test_123"
+    assert result["invoice_id"] == "inv_123"
+    call_kwargs = mock_post.call_args.kwargs
+    assert call_kwargs["json"]["customer_id"] == "cust_1"
+    assert call_kwargs["json"]["plan_code"] == "pro"
+    assert "success_url" not in call_kwargs["json"]
+
+
+@patch("nozle.client.requests.post")
+def test_checkout_with_success_url(mock_post):
+    mock_post.return_value = MagicMock(json=lambda: {"client_secret": "cs_test_123"})
+    client = Nozle("key")
+    client.checkout("cust_1", "pro", success_url="https://example.com/done")
+    call_kwargs = mock_post.call_args.kwargs
+    assert call_kwargs["json"]["success_url"] == "https://example.com/done"
+
+
+@patch("nozle.client.requests.post")
+def test_subscribe(mock_post):
+    mock_post.return_value = MagicMock(
+        json=lambda: {"subscription_id": "sub_123", "status": "active"}
+    )
+    client = Nozle("key")
+    result = client.subscribe("cust_1", "pro")
+    assert result["subscription_id"] == "sub_123"
+    assert result["status"] == "active"
+    call_kwargs = mock_post.call_args.kwargs
+    assert call_kwargs["json"]["customer_id"] == "cust_1"
+    assert call_kwargs["json"]["plan_code"] == "pro"

@@ -23,6 +23,47 @@ class Nozle:
     def can(self, customer_id, feature):
         return _can(self.base_url, self.api_key, customer_id, feature)
 
+    def plans(self):
+        res = requests.get(
+            f"{self.base_url}/v1/plans",
+            headers=self._headers(),
+            timeout=10,
+        )
+        res.raise_for_status()
+        return res.json().get("plans", [])
+
+    def checkout(self, customer_id, plan_code, success_url=None):
+        body = {
+            "plan_code": plan_code,
+            "customer_id": customer_id,
+        }
+        if success_url:
+            body["success_url"] = success_url
+        res = requests.post(
+            f"{self.base_url}/v1/checkout",
+            headers=self._headers(),
+            json=body,
+            timeout=10,
+        )
+        res.raise_for_status()
+        return res.json()
+
+    def subscribe(self, customer_id, plan_code):
+        res = requests.post(
+            f"{self.base_url}/v1/subscribe",
+            headers=self._headers(),
+            json={
+                "plan_code": plan_code,
+                "customer_id": customer_id,
+            },
+            timeout=10,
+        )
+        res.raise_for_status()
+        return res.json()
+
+    def _headers(self):
+        return {"Authorization": f"Bearer {self.api_key}"}
+
     def _resolve_subscription(self, customer_id):
         if customer_id in self._sub_cache:
             return self._sub_cache[customer_id]

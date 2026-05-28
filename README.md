@@ -45,10 +45,28 @@ client.margin.by_model()                       # margin broken down by AI model
 client.margin.trend(granularity="day")         # margin trend over time
 ```
 
+## Plans & Checkout
+
+```python
+# List available plans
+plans = client.plans()
+
+# Create checkout session (returns Stripe client_secret)
+result = client.checkout("customer_123", "pro")
+# result = { "client_secret": "...", "invoice_id": "...", "amount_cents": 2900, "currency": "USD" }
+
+# With success URL
+result = client.checkout("customer_123", "pro", success_url="https://example.com/done")
+
+# Create subscription after payment
+result = client.subscribe("customer_123", "pro")
+# result = { "subscription_id": "...", "status": "active" }
+```
+
 ## Optional: OpenAI Integration
 
 ```bash
-pip install nozle-sdk-sdk[openai]
+pip install nozle-sdk[openai]
 ```
 
 ## License
