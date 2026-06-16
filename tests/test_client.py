@@ -84,7 +84,7 @@ def test_plans(mock_get):
     assert len(plans) == 1
     assert plans[0]["code"] == "pro"
     mock_get.assert_called_once_with(
-        "http://localhost:8080/v1/plans",
+        "http://localhost:8080/api/v1/plans",
         headers={"Authorization": "Bearer key"},
         timeout=10,
     )

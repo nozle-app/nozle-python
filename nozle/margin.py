@@ -2,16 +2,17 @@ import requests
 
 
 class MarginClient:
-    def __init__(self, basera_url, api_key):
-        self._base = f"{basera_url}/v1/margin"
+    def __init__(self, basera_url, api_key, timeout=10):
+        self._base = f"{basera_url}/api/v1/margin"
         self._headers = {"Authorization": f"Bearer {api_key}"}
+        self._timeout = timeout
 
     def _get(self, path, **params):
         resp = requests.get(
             f"{self._base}{path}",
             headers=self._headers,
             params=params,
-            timeout=10,
+            timeout=self._timeout,
         )
         resp.raise_for_status()
         return resp.json()
