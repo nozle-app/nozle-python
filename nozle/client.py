@@ -44,8 +44,8 @@ class Nozle:
         _track(self.events_url, self.api_key, customer_id, event, metadata,
                subscription_id, transaction_id, timestamp, timeout=self.timeout)
 
-    def can(self, customer_id, feature):
-        return _can(self.base_url, self.api_key, customer_id, feature, timeout=self.timeout)
+    def can(self, customer_id, feature, metadata=None):
+        return _can(self.base_url, self.api_key, customer_id, feature, metadata=metadata, timeout=self.timeout)
 
     def plans(self):
         res = requests.get(
