@@ -1,133 +1,328 @@
-from unittest.mock import MagicMock, patch
+from __future__ import annotations
 
-from nozle import Nozle, __version__
+from importlib.metadata import version
+from typing import Callable
 
+import pytest
+import requests_mock
 
-def test_version():
-    assert __version__ == "0.2.0"
-
-
-def test_client_init():
-    client = Nozle("test-key")
-    assert client.api_key == "test-key"
-    assert client.base_url == "http://localhost:8080"
-    assert client.events_url == "http://localhost:3000"
-
-
-def test_client_strips_trailing_slashes():
-    client = Nozle("key", base_url="https://api.example.com/", events_url="https://events.example.com/")
-    assert client.base_url == "https://api.example.com"
-    assert client.events_url == "https://events.example.com"
+from nozle import (
+    Nozle,
+    NozleAPIError,
+    NozleAuthenticationError,
+    NozleValidationError,
+    __version__,
+)
 
 
-@patch("nozle.track.requests.post")
-def test_track_with_subscription(mock_post):
-    client = Nozle("key")
-    client.track("cust_1", "api_call", metadata={"tokens": 100}, subscription_id="sub_1")
-    mock_post.assert_called_once()
-    body = mock_post.call_args.kwargs["json"]["event"]
-    assert body["external_customer_id"] == "cust_1"
-    assert body["code"] == "api_call"
-    assert body["external_subscription_id"] == "sub_1"
-    assert body["properties"] == {"tokens": 100}
+def test_version_metadata_and_runtime_match() -> None:
+    assert __version__ == "0.4.0"
+    assert version("nozle-sdk") == __version__
 
 
-@patch("nozle.track.requests.post")
-def test_track_generates_transaction_id(mock_post):
-    client = Nozle("key")
-    client.track("cust_1", "api_call", subscription_id="sub_1")
-    body = mock_post.call_args.kwargs["json"]["event"]
-    assert len(body["transaction_id"]) == 36
-
-
-@patch("nozle.can.requests.get")
-def test_can(mock_get):
-    mock_get.return_value = MagicMock(json=lambda: {"allowed": True})
-    client = Nozle("key")
-    result = client.can("cust_1", "feature_x")
-    assert result == {"allowed": True}
-    mock_get.assert_called_once()
-
-
-@patch("nozle.margin.requests.get")
-def test_margin_summary(mock_get):
-    mock_get.return_value = MagicMock(json=lambda: {"margin": 0.42})
-    client = Nozle("key")
-    result = client.margin.summary()
-    assert result == {"margin": 0.42}
-
-
-@patch("nozle.margin.requests.get")
-def test_margin_by_customer(mock_get):
-    mock_get.return_value = MagicMock(json=lambda: [{"customer": "c1", "margin": 0.5}])
-    client = Nozle("key")
-    result = client.margin.by_customer()
-    assert result[0]["customer"] == "c1"
-
-
-@patch("nozle.margin.requests.get")
-def test_margin_trend(mock_get):
-    mock_get.return_value = MagicMock(json=lambda: {"points": []})
-    client = Nozle("key")
-    client.margin.trend(granularity="week")
-    _, kwargs = mock_get.call_args
-    assert kwargs["params"]["granularity"] == "week"
-
-
-@patch("nozle.client.requests.get")
-def test_plans(mock_get):
-    mock_get.return_value = MagicMock(
-        json=lambda: {"plans": [{"code": "pro", "name": "Pro", "amount_cents": 2900}]}
+def test_client_initializes_namespaces_and_strips_slashes() -> None:
+    client = Nozle(
+        "sk_test",
+        base_url="https://engine.example/",
+        events_url="https://core.example/",
     )
-    client = Nozle("key")
-    plans = client.plans()
-    assert len(plans) == 1
+
+    assert client.api_key == "sk_test"
+    assert client.base_url == "https://engine.example"
+    assert client.events_url == "https://core.example"
+    assert client.customers is not None
+    assert client.credit_systems is not None
+    assert client.credits is not None
+    assert client.entities is not None
+    assert client.usage is not None
+    assert client.margin is not None
+
+
+@pytest.mark.parametrize("api_key", ["pk_browser", "sk_backend"])
+def test_plans_accept_catalog_and_secret_keys(
+    requests_mock: requests_mock.Mocker, api_key: str
+) -> None:
+    requests_mock.get(
+        "https://engine.example/api/v1/plans",
+        json={
+            "plans": [
+                {
+                    "code": "pro",
+                    "name": "Pro",
+                    "amount_cents": 4900,
+                    "amount_currency": "USD",
+                    "interval": "monthly",
+                }
+            ]
+        },
+    )
+
+    plans = Nozle(api_key, base_url="https://engine.example").plans()
+
     assert plans[0]["code"] == "pro"
-    mock_get.assert_called_once_with(
-        "http://localhost:8080/api/v1/plans",
-        headers={"Authorization": "Bearer key"},
-        timeout=10,
+    assert requests_mock.last_request.headers["Authorization"] == f"Bearer {api_key}"
+
+
+def test_plans_reject_unknown_key_type_before_network(
+    requests_mock: requests_mock.Mocker,
+) -> None:
+    with pytest.raises(NozleAuthenticationError, match="pk_.*sk_"):
+        Nozle("token_other").plans()
+    assert requests_mock.request_history == []
+
+
+def test_track_with_explicit_subscription_and_timestamp(
+    requests_mock: requests_mock.Mocker,
+) -> None:
+    requests_mock.post("https://core.example/api/v1/events", json={})
+    client = Nozle("sk_test", events_url="https://core.example")
+
+    client.track(
+        "cust_1",
+        "api_call",
+        metadata={"tokens": 100},
+        subscription_id="sub_1",
+        transaction_id="tx_1",
+        timestamp="2026-07-20T12:00:00.750Z",
+    )
+
+    event = requests_mock.last_request.json()["event"]
+    assert event == {
+        "transaction_id": "tx_1",
+        "external_customer_id": "cust_1",
+        "code": "api_call",
+        "properties": {"tokens": 100},
+        "external_subscription_id": "sub_1",
+        "timestamp": "2026-07-20T12:00:00.750Z",
+    }
+
+
+def test_track_generates_transaction_id(requests_mock: requests_mock.Mocker) -> None:
+    requests_mock.post("http://localhost:3000/api/v1/events", text="accepted")
+
+    Nozle("sk_test").track("cust_1", "api_call", subscription_id="sub_1")
+
+    assert len(requests_mock.last_request.json()["event"]["transaction_id"]) == 36
+
+
+def test_track_resolves_and_caches_subscription(requests_mock: requests_mock.Mocker) -> None:
+    lookup = requests_mock.get(
+        "https://core.example/api/v1/subscriptions",
+        json={"subscriptions": [{"external_id": "sub_auto"}]},
+    )
+    events = requests_mock.post("https://core.example/api/v1/events", json={})
+    client = Nozle("sk_test", events_url="https://core.example")
+
+    client.track("cust_1", "event_1")
+    client.track("cust_1", "event_2")
+
+    assert lookup.call_count == 1
+    assert events.call_count == 2
+    assert requests_mock.request_history[0].qs == {
+        "external_customer_id": ["cust_1"],
+        "status[]": ["active"],
+    }
+    assert requests_mock.request_history[1].json()["event"]["external_subscription_id"] == (
+        "sub_auto"
     )
 
 
-@patch("nozle.client.requests.post")
-def test_checkout(mock_post):
-    mock_post.return_value = MagicMock(
-        json=lambda: {
-            "client_secret": "cs_test_123",
-            "invoice_id": "inv_123",
-            "amount_cents": 2900,
-            "currency": "USD",
-        }
+@pytest.mark.parametrize(
+    ("subscriptions", "message"),
+    [([], "no active subscription"), ([{"external_id": "a"}, {"external_id": "b"}], "2 active")],
+)
+def test_track_rejects_ambiguous_subscription_lookup(
+    requests_mock: requests_mock.Mocker,
+    subscriptions: list[dict[str, str]],
+    message: str,
+) -> None:
+    requests_mock.get(
+        "http://localhost:3000/api/v1/subscriptions",
+        json={"subscriptions": subscriptions},
     )
-    client = Nozle("key")
-    result = client.checkout("cust_1", "pro")
-    assert result["client_secret"] == "cs_test_123"
-    assert result["invoice_id"] == "inv_123"
-    call_kwargs = mock_post.call_args.kwargs
-    assert call_kwargs["json"]["customer_id"] == "cust_1"
-    assert call_kwargs["json"]["plan_code"] == "pro"
-    assert "success_url" not in call_kwargs["json"]
+
+    with pytest.raises(NozleAPIError, match=message):
+        Nozle("sk_test").track("cust_1", "event")
 
 
-@patch("nozle.client.requests.post")
-def test_checkout_with_success_url(mock_post):
-    mock_post.return_value = MagicMock(json=lambda: {"client_secret": "cs_test_123"})
-    client = Nozle("key")
-    client.checkout("cust_1", "pro", success_url="https://example.com/done")
-    call_kwargs = mock_post.call_args.kwargs
-    assert call_kwargs["json"]["success_url"] == "https://example.com/done"
-
-
-@patch("nozle.client.requests.post")
-def test_subscribe(mock_post):
-    mock_post.return_value = MagicMock(
-        json=lambda: {"subscription_id": "sub_123", "status": "active"}
+def test_can_sends_metadata_as_json_query(requests_mock: requests_mock.Mocker) -> None:
+    requests_mock.get(
+        "https://engine.example/api/v1/can",
+        json={
+            "allowed": True,
+            "used": 5,
+            "cost_per_use_cents": 1,
+            "revenue_per_use_cents": 2,
+            "margin_per_use_cents": 1,
+        },
     )
-    client = Nozle("key")
-    result = client.subscribe("cust_1", "pro")
-    assert result["subscription_id"] == "sub_123"
-    assert result["status"] == "active"
-    call_kwargs = mock_post.call_args.kwargs
-    assert call_kwargs["json"]["customer_id"] == "cust_1"
-    assert call_kwargs["json"]["plan_code"] == "pro"
+
+    result = Nozle("sk_test", base_url="https://engine.example").can(
+        "cust_1", "code_completion", {"model": "gpt-5"}
+    )
+
+    assert result["allowed"] is True
+    assert requests_mock.last_request.qs == {
+        "customer_id": ["cust_1"],
+        "feature": ["code_completion"],
+        "metadata": ['{"model": "gpt-5"}'],
+    }
+
+
+@pytest.mark.parametrize(
+    "result",
+    [
+        {"type": "stripe", "client_secret": "cs_test"},
+        {"type": "stripe", "url": "https://checkout.stripe.example/session"},
+        {"type": "completed", "status": "active", "subscription_id": "sub_1"},
+        {"type": "scheduled", "status": "scheduled", "plan_code": "starter"},
+    ],
+)
+def test_checkout_preserves_every_result_variant_and_uses_return_url(
+    requests_mock: requests_mock.Mocker, result: dict[str, object]
+) -> None:
+    requests_mock.post("https://engine.example/api/v1/checkout", json=result)
+    client = Nozle("sk_test", base_url="https://engine.example")
+
+    response = client.checkout(
+        "cust_1", "pro", return_url="https://merchant.example/billing/complete"
+    )
+
+    assert response == result
+    assert requests_mock.last_request.json() == {
+        "plan_code": "pro",
+        "customer_id": "cust_1",
+        "return_url": "https://merchant.example/billing/complete",
+    }
+
+
+def test_checkout_accepts_deprecated_success_url_but_never_sends_both(
+    requests_mock: requests_mock.Mocker,
+) -> None:
+    requests_mock.post(
+        "http://localhost:8080/api/v1/checkout",
+        json={"type": "stripe", "client_secret": "cs_test"},
+    )
+    client = Nozle("sk_test")
+
+    with pytest.deprecated_call(match="success_url"):
+        client.checkout("cust_1", "pro", success_url="https://merchant.example/done")
+
+    assert requests_mock.last_request.json() == {
+        "plan_code": "pro",
+        "customer_id": "cust_1",
+        "return_url": "https://merchant.example/done",
+    }
+
+
+def test_checkout_rejects_conflicting_return_alias_before_network(
+    requests_mock: requests_mock.Mocker,
+) -> None:
+    with pytest.raises(NozleValidationError, match="conflicting"):
+        Nozle("sk_test").checkout(
+            "cust_1",
+            "pro",
+            return_url="https://merchant.example/a",
+            success_url="https://merchant.example/b",
+        )
+    assert requests_mock.request_history == []
+
+
+def test_subscribe_ping_customer_and_check_and_deduct_contracts(
+    requests_mock: requests_mock.Mocker,
+) -> None:
+    requests_mock.post(
+        "https://engine.example/api/v1/subscribe",
+        json={"subscription_id": "sub_1", "status": "active"},
+    )
+    requests_mock.get(
+        "https://engine.example/api/v1/ping",
+        json={"ok": True, "engine": "ok", "version": "1"},
+    )
+    requests_mock.post(
+        "https://engine.example/api/v1/customers",
+        json={"external_id": "cust_1", "name": "Acme"},
+    )
+    requests_mock.post(
+        "https://engine.example/api/v1/check-and-deduct",
+        json={"allowed": True, "remaining": 95},
+    )
+    client = Nozle("sk_test", base_url="https://engine.example")
+
+    assert client.subscribe("cust_1", "pro")["subscription_id"] == "sub_1"
+    assert requests_mock.last_request.json() == {"plan_code": "pro", "customer_id": "cust_1"}
+    assert client.ping()["ok"] is True
+    assert client.customers.upsert("cust_1", name="Acme")["name"] == "Acme"
+    assert requests_mock.last_request.json() == {"external_id": "cust_1", "name": "Acme"}
+    assert client.check_and_deduct("cust_1", "completion", 5)["remaining"] == 95
+    assert requests_mock.last_request.json() == {
+        "customer_id": "cust_1",
+        "feature": "completion",
+        "credits": 5,
+    }
+
+
+def test_margin_routes_and_trend_query(requests_mock: requests_mock.Mocker) -> None:
+    for path in ("summary", "customers", "metrics", "plans", "models", "trend"):
+        requests_mock.get(f"https://engine.example/api/v1/margin/{path}", json={"path": path})
+    margin = Nozle("sk_test", base_url="https://engine.example").margin
+
+    assert margin.summary(from_date="2026-01-01", unused=None)["path"] == "summary"
+    assert requests_mock.request_history[0].qs == {"from_date": ["2026-01-01"]}
+    assert margin.by_customer()["path"] == "customers"
+    assert margin.by_metric()["path"] == "metrics"
+    assert margin.by_plan()["path"] == "plans"
+    assert margin.by_model()["path"] == "models"
+    assert margin.trend(granularity="week")["path"] == "trend"
+    assert requests_mock.last_request.qs == {"granularity": ["week"]}
+
+
+@pytest.mark.parametrize(
+    "invoke",
+    [
+        lambda client: client.track("c", "e", subscription_id="s"),
+        lambda client: client.can("c", "f"),
+        lambda client: client.checkout("c", "p"),
+        lambda client: client.subscribe("c", "p"),
+        lambda client: client.ping(),
+        lambda client: client.check_and_deduct("c", "f", 1),
+        lambda client: client.customers.upsert("c"),
+        lambda client: client.margin.summary(),
+        lambda client: client.credit_systems.list(),
+        lambda client: client.credits.list_balances("c"),
+        lambda client: client.entities.list("c"),
+        lambda client: client.usage.check("c", "metric"),
+    ],
+)
+def test_publishable_key_rejects_every_protected_operation_before_network(
+    requests_mock: requests_mock.Mocker,
+    invoke: Callable[[Nozle], object],
+) -> None:
+    with pytest.raises(NozleAuthenticationError, match="requires a secret key"):
+        invoke(Nozle("pk_browser"))
+    assert requests_mock.request_history == []
+
+
+def test_structured_api_error_is_safe_and_mutations_are_not_retried(
+    requests_mock: requests_mock.Mocker,
+) -> None:
+    api_key = "sk_do_not_leak"
+    matcher = requests_mock.post(
+        "https://engine.example/api/v1/checkout",
+        status_code=503,
+        json={
+            "error": "temporarily unavailable",
+            "api_key": api_key,
+            "message": f"failed for {api_key}",
+        },
+    )
+
+    with pytest.raises(NozleAPIError) as raised:
+        Nozle(api_key, base_url="https://engine.example").checkout("cust", "pro")
+
+    error = raised.value
+    assert error.operation == "checkout"
+    assert error.status_code == 503
+    assert error.response_details["api_key"] == "[REDACTED]"
+    assert api_key not in str(error)
+    assert matcher.call_count == 1

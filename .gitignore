@@ -6,3 +6,6 @@ build/
 *.egg
 .pytest_cache/
 .tox/
+.venv/
+.mypy_cache/
+.ruff_cache/
