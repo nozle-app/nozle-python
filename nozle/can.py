@@ -1,16 +1,33 @@
-import requests
+from __future__ import annotations
+
+import json
+from typing import Mapping, Optional, cast
+
+from nozle._transport import HttpTransport
+from nozle._validation import require_non_empty, require_secret_key
+from nozle.types import CanResult
 
 
-def can(basera_url, api_key, customer_id, feature, metadata=None, timeout=10):
+def can(
+    transport: HttpTransport,
+    api_key: str,
+    customer_id: str,
+    feature: str,
+    metadata: Optional[Mapping[str, str]] = None,
+) -> CanResult:
+    operation = "can"
+    require_secret_key(api_key, operation)
+    require_non_empty(customer_id, "customer_id", operation)
+    require_non_empty(feature, "feature", operation)
     params = {"customer_id": customer_id, "feature": feature}
     if metadata:
-        import json
         params["metadata"] = json.dumps(metadata)
-    resp = requests.get(
-        f"{basera_url}/api/v1/can",
-        headers={"Authorization": f"Bearer {api_key}"},
-        params=params,
-        timeout=timeout,
+    return cast(
+        CanResult,
+        transport.request(
+            operation,
+            "GET",
+            "/api/v1/can",
+            params=params,
+        ),
     )
-    resp.raise_for_status()
-    return resp.json()

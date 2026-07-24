@@ -1,6 +1,8 @@
-# Nozle
+# Nozle Python SDK
 
-Python SDK for usage tracking, entitlement checks, margin intelligence, LLM cost capture, and billing management.
+Backend-only Python SDK for Nozle billing, exact-decimal credits, Entity lifecycle,
+ledger usage, margin intelligence, and LLM usage capture. Version 0.4.0 mirrors the
+backend contract exposed by `@nozle-js/node` 0.4.0.
 
 ## Install
 
@@ -8,191 +10,241 @@ Python SDK for usage tracking, entitlement checks, margin intelligence, LLM cost
 pip install nozle-sdk
 ```
 
-## Quick Start
+Python 3.9 through 3.13 are supported. The package is typed and includes `py.typed`.
+
+## Authentication
+
+- `pk_` publishable keys may call only `plans()`.
+- `sk_` secret keys are required for every customer read, mutation, event, credit,
+  Entity, usage, and margin operation.
+- Protected operations reject `pk_` locally before network I/O.
+
+Keep secret keys on a trusted backend. This package is not a browser SDK.
+When a request originates in a browser, authenticate it in your backend and derive the
+Nozle `customer_id` from that authenticated user, team, or organization. Do not treat a
+browser-supplied customer ID as authoritative.
 
 ```python
 from nozle import Nozle
 
-client = Nozle(
-    api_key="sk_live_...",
-    base_url="https://api.nozle.ai",      # Default: http://localhost:8080
-    events_url="https://lago.nozle.ai",    # Default: http://localhost:3000
-    timeout=15,                             # Default: 10 (seconds)
+nozle = Nozle(
+    api_key="sk_backend_...",
+    base_url="https://api.nozle.ai",
+    events_url="https://core.nozle.ai",
+    timeout=15,
 )
-
-# Track usage events
-client.track("cust_123", "api_call", metadata={"model": "gpt-4o", "tokens": 1500})
-
-# Check feature entitlements
-result = client.can("cust_123", "advanced_analytics")
-
-# Margin intelligence
-summary = client.margin.summary()
 ```
 
-## LLM Auto-Capture
+## Public namespaces
 
-Automatically extract model name, token counts, and latency from LLM API responses. No manual tracking needed — the SDK intercepts completions and calls `nozle.track()` for you.
+The client exposes `customers`, `credit_systems`, `credits`, `entities`, `usage`, and
+`margin`.
 
-Cost calculation happens server-side via the Go engine's cost model system.
+### Plans and checkout
 
-### OpenAI
+```python
+plans = nozle.plans()
+
+checkout = nozle.checkout(
+    "customer-123",
+    "pro",
+    return_url="https://merchant.example/billing/complete",
+)
+```
+
+Checkout can return any production transition shape:
+
+- `{"type": "stripe", "client_secret": "..."}`
+- `{"type": "stripe", "url": "https://..."}`
+- `{"type": "completed", "status": "..."}`
+- `{"type": "scheduled", "status": "..."}`
+
+The deprecated `success_url=` argument remains an alias for `return_url=`. The SDK
+never sends both fields and rejects conflicting values.
+
+Backend subscription creation remains available with `nozle.subscribe(customer_id,
+plan_code)`. Both checkout and subscription creation require an `sk_` key.
+
+### Customers and Credit Systems
+
+```python
+customer = nozle.customers.upsert(
+    "customer-123",
+    name="Acme",
+    email="billing@example.com",
+)
+
+# Follows every active Core page and returns one normalized list.
+systems = nozle.credit_systems.list()
+```
+
+### Customer and Entity credits
+
+```python
+balance = nozle.credits.get_balance("customer-123", "ai_credits")
+balances = nozle.credits.list_balances("customer-123")
+operations = nozle.credits.list_operations(
+    "customer-123",
+    credit_system_code="ai_credits",
+    limit=50,
+    cursor=None,
+)
+
+entity_balance = nozle.credits.get_entity_balance(
+    "customer-123", "user-42", "ai_credits"
+)
+entity_balances = nozle.credits.list_entity_balances("customer-123", "user-42")
+entity_operations = nozle.credits.list_entity_operations(
+    "customer-123", "user-42", limit=50
+)
+
+allocation = nozle.credits.allocate(
+    "customer-123",
+    "user-42",
+    credit_system_code="ai_credits",
+    amount="100.000000000001",
+    idempotency_key="allocation-user-42-v1",
+)
+```
+
+Every credit amount is returned as a string and is never converted to `float`.
+Allocation and deallocation amounts must be positive decimal strings with at most 12
+decimal places. Mutation idempotency keys are mandatory and must fit within 255 UTF-8
+bytes.
+
+### Entities
+
+```python
+entity = nozle.entities.get("customer-123", "user-42")
+page = nozle.entities.list("customer-123", status="active", limit=50)
+
+result = nozle.entities.upsert(
+    "customer-123",
+    "user-42",
+    status="active",
+    name="Asha",
+    metadata={"team": "support"},
+    idempotency_key="entity-user-42-v1",
+)
+
+nozle.entities.suspend(
+    "customer-123", "user-42", idempotency_key="suspend-user-42-v1"
+)
+nozle.entities.activate(
+    "customer-123", "user-42", idempotency_key="activate-user-42-v1"
+)
+
+nozle.entities.bulk_upsert(
+    "customer-123",
+    [
+        {"external_id": "user-42", "status": "active"},
+        {"external_id": "user-43", "status": "suspended"},
+    ],
+    idempotency_key="entity-import-v1",
+)
+```
+
+Entity IDs use UTF-8 byte limits, list limits are 1–100, and bulk upserts accept 1–500
+unique Entity IDs.
+
+### Ledger usage
+
+`usage.check()` is advisory and does not mutate a balance. `usage.track()` atomically
+records consumption and requires an idempotency key.
+
+```python
+preview = nozle.usage.check(
+    "customer-123",
+    "agent_execution",
+    entity_id="user-42",
+    credit_system_code="ai_credits",
+    properties={"model": "gpt-5"},
+    occurred_at="2026-07-20T12:00:00.750Z",
+)
+
+consumption = nozle.usage.track(
+    "customer-123",
+    "agent_execution",
+    entity_id="user-42",
+    properties={"model": "gpt-5"},
+    timestamp="2026-07-20T12:00:00.750Z",
+    idempotency_key="execution-123",
+)
+```
+
+The SDK does not automatically retry mutation requests. Retry only with the same
+idempotency key after deciding the failure is safe to retry.
+
+## Existing operations
+
+```python
+nozle.track(
+    "customer-123",
+    "api_call",
+    metadata={"tokens": 100},
+    subscription_id="subscription-123",
+)
+
+entitlement = nozle.can("customer-123", "code_completion")
+deduction = nozle.check_and_deduct("customer-123", "code_completion", credits=5)
+health = nozle.ping()
+
+summary = nozle.margin.summary()
+by_customer = nozle.margin.by_customer()
+trend = nozle.margin.trend(granularity="week")
+```
+
+If `track()` is called without `subscription_id`, the SDK resolves and caches the
+customer's single active subscription through Core.
+
+## OpenAI and Anthropic wrappers
+
+Install an optional provider dependency:
 
 ```bash
-pip install nozle-sdk[openai]  # installs openai>=1.0
+pip install "nozle-sdk[openai]"
+pip install "nozle-sdk[anthropic]"
 ```
 
 ```python
 from openai import OpenAI
 from nozle import Nozle, wrap_openai
 
-nozle = Nozle(api_key="sk_live_...")
+nozle = Nozle("sk_backend_...")
 openai = wrap_openai(
     OpenAI(),
     nozle,
-    customer_id="cust_123",
-    feature="code_completion",   # optional: tag for entitlement tracking
-    metric_code="llm_tokens",    # optional: defaults to "llm_tokens"
+    customer_id="customer-123",
+    metric_code="llm_tokens",
+    feature="assistant",
 )
 
-# Use OpenAI normally — tracking happens automatically
 response = openai.chat.completions.create(
-    model="gpt-4o",
-    messages=[{"role": "user", "content": "Hello"}],
-)
-
-# Streaming works too
-stream = openai.chat.completions.create(
-    model="gpt-4o",
-    messages=[{"role": "user", "content": "Hello"}],
-    stream=True,
-)
-for chunk in stream:
-    pass  # usage is captured from the final chunk
-```
-
-### Anthropic
-
-```bash
-pip install nozle-sdk[anthropic]  # installs anthropic>=0.30.0
-```
-
-```python
-from anthropic import Anthropic
-from nozle import Nozle, wrap_anthropic
-
-nozle = Nozle(api_key="sk_live_...")
-anthropic = wrap_anthropic(
-    Anthropic(),
-    nozle,
-    customer_id="cust_123",
-    feature="code_completion",
-)
-
-# Use Anthropic normally
-message = anthropic.messages.create(
-    model="claude-sonnet-4-20250514",
-    max_tokens=1024,
+    model="gpt-5",
     messages=[{"role": "user", "content": "Hello"}],
 )
 ```
 
-Each tracked event sends `{ model, input_tokens, output_tokens, latency_ms, feature }` to the engine. The Go cost model system calculates `cost_cents` server-side.
+Synchronous clients, asynchronous clients, synchronous streams, and asynchronous
+streams are supported for OpenAI and Anthropic. The wrappers emit these event
+properties:
 
-## Usage Tracking
+- `model`
+- `input_tokens`
+- `output_tokens`
+- `latency_ms`
+- optional `feature`
 
-```python
-# Basic tracking (auto-resolves subscription)
-client.track("cust_123", "api_call", metadata={"tokens": 100})
+Provider failures are propagated. If the provider succeeds but Nozle tracking fails,
+the successful provider response or completed stream is preserved and a
+`NozleTrackingWarning` is emitted without credential-bearing error details.
 
-# With explicit subscription
-client.track("cust_123", "api_call", metadata={"tokens": 100}, subscription_id="sub_abc")
+## Errors
 
-# With custom transaction ID and timestamp
-client.track("cust_123", "api_call", metadata={"tokens": 100},
-             transaction_id="tx_custom_123",
-             timestamp="2025-01-15T10:30:00Z")
-```
-
-Subscription auto-resolution: if no `subscription_id` is provided, the SDK looks up the customer's active subscription and caches it for subsequent calls.
-
-## Entitlement Checks
-
-```python
-result = client.can("cust_123", "code_completion")
-
-if result["allowed"]:
-    print(f"{result['remaining']} uses remaining")
-else:
-    print(f"Blocked: {result['reason']}")
-```
-
-Response includes cost intelligence:
-
-```python
-result["cost_per_use_cents"]    # Your cost per unit
-result["revenue_per_use_cents"] # What you charge per unit
-result["margin_per_use_cents"]  # Revenue minus cost
-result["min_margin_percent"]    # Configured margin floor (if set)
-```
-
-## Credit Check & Deduct
-
-Atomically check wallet balance and deduct credits in a single transaction. Uses row-level locking to prevent race conditions.
-
-```python
-result = client.check_and_deduct("cust_123", "code_completion", credits=5)
-
-if result["allowed"]:
-    print(f"Deducted. Remaining: {result['remaining']}")
-else:
-    print(f"Insufficient credits. Balance: {result['remaining']}")
-```
-
-## Customer Management
-
-```python
-# Create or update a customer
-customer = client.customers.upsert("cust_123", name="Acme Corp", email="billing@acme.com")
-```
-
-## Health Check
-
-```python
-status = client.ping()
-# {"ok": True, "engine": "ok"}
-```
-
-## Margin Intelligence
-
-Requires a secret key (`sk_` prefix).
-
-```python
-client.margin.summary()                        # overall margin summary
-client.margin.by_customer()                    # margin broken down by customer
-client.margin.by_metric()                      # margin broken down by billable metric
-client.margin.by_plan()                        # margin broken down by plan
-client.margin.by_model()                       # margin broken down by AI model
-client.margin.trend(granularity="day")         # margin trend over time
-```
-
-## Plans & Checkout
-
-```python
-# List available plans
-plans = client.plans()
-
-# Create checkout session (returns Stripe client_secret)
-result = client.checkout("cust_123", "pro")
-# {"client_secret": "...", "invoice_id": "...", "amount_cents": 2900, "currency": "USD"}
-
-# With success URL
-result = client.checkout("cust_123", "pro", success_url="https://example.com/done")
-
-# Create subscription after payment
-result = client.subscribe("cust_123", "pro")
-# {"subscription_id": "...", "status": "active"}
-```
+`NozleAPIError` exposes `operation`, `status_code`, and credential-safe
+`response_details`. Local contract failures use `NozleValidationError` or
+`NozleAuthenticationError`; transport failures use `NozleTransportError`. Exception
+messages redact API keys and secret-shaped response fields.
 
 ## License
 
