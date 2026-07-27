@@ -21,24 +21,6 @@ def entity(status: str = "active") -> dict[str, object]:
         "created_at": "2026-07-20T12:00:00Z",
         "updated_at": "2026-07-20T12:00:00Z",
         "deleted_at": None,
-        "seat_sync": {
-            "metric_code": "seats",
-            "external_subscription_id": "subscription-1",
-            "operation_type": "add",
-            "reason": "lifecycle",
-            "status": "published",
-            "transaction_id": "entity-seat-event-1",
-            "attempt_count": 1,
-            "last_attempt_at": "2026-07-20T12:00:01Z",
-            "published_at": "2026-07-20T12:00:02Z",
-            "last_reconciled_at": "2026-07-20T12:01:00Z",
-            "last_error": None,
-            "reconciliation_status": "in_sync",
-            "expected_seat_count": 3,
-            "observed_seat_count": 3,
-            "reconciliation_checked_at": "2026-07-20T12:01:00Z",
-            "last_repair_enqueued_at": None,
-        },
     }
 
 
@@ -55,7 +37,7 @@ def test_entity_get_list_and_upsert_contract(requests_mock: requests_mock.Mocker
     )
     entities = Nozle("sk_test", base_url="https://engine.example").entities
 
-    assert entities.get("acme/west", "user/42")["seat_sync"]["status"] == "published"
+    assert entities.get("acme/west", "user/42")["external_id"] == "user/42"
     page = entities.list("acme/west", status="active", limit=25, cursor="cursor/1")
     result = entities.upsert(
         "acme/west",

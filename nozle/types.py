@@ -202,31 +202,6 @@ class CreditOperationPage(TypedDict):
 
 
 CustomerEntityStatus = Literal["active", "suspended", "deleted"]
-CustomerEntitySeatEventStatus = Literal[
-    "pending", "processing", "failed", "published", "dead_lettered"
-]
-CustomerEntitySeatReconciliationStatus = Literal[
-    "pending", "in_sync", "drift", "repairing", "failed"
-]
-
-
-class CustomerEntitySeatSync(TypedDict):
-    metric_code: str
-    external_subscription_id: str
-    operation_type: Literal["add", "remove"]
-    reason: Literal["lifecycle", "reconciliation"]
-    status: CustomerEntitySeatEventStatus
-    transaction_id: str
-    attempt_count: int
-    last_attempt_at: Optional[str]
-    published_at: Optional[str]
-    last_reconciled_at: Optional[str]
-    last_error: Optional[str]
-    reconciliation_status: Optional[CustomerEntitySeatReconciliationStatus]
-    expected_seat_count: Optional[int]
-    observed_seat_count: Optional[int]
-    reconciliation_checked_at: Optional[str]
-    last_repair_enqueued_at: Optional[str]
 
 
 class CustomerEntity(TypedDict):
@@ -239,7 +214,6 @@ class CustomerEntity(TypedDict):
     created_at: str
     updated_at: str
     deleted_at: Optional[str]
-    seat_sync: Optional[CustomerEntitySeatSync]
 
 
 class _CustomerEntityUpsertRequired(TypedDict):
