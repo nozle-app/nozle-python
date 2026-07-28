@@ -1,8 +1,8 @@
 # Nozle Python SDK
 
 Backend-only Python SDK for Nozle billing, exact-decimal credits, Entity lifecycle,
-ledger usage, margin intelligence, and LLM usage capture. Version 0.4.0 mirrors the
-backend contract exposed by `@nozle-js/node` 0.4.0.
+ledger usage, margin intelligence, and LLM usage capture. Version 0.4.1 mirrors the
+backend contract exposed by `@nozle-js/node` 0.4.1.
 
 ## Install
 
@@ -64,6 +64,21 @@ never sends both fields and rejects conflicting values.
 
 Backend subscription creation remains available with `nozle.subscribe(customer_id,
 plan_code)`. Both checkout and subscription creation require an `sk_` key.
+
+Cancellation is also backend-only. It defaults to end-of-period behavior, preserving
+access until Nozle's authoritative billing boundary:
+
+```python
+result = nozle.cancel_subscription("customer-123", "subscription-123")
+# result["subscription"]["status"] == "active"
+# result["subscription"]["ending_at"] contains the scheduled boundary
+```
+
+Immediate termination must be explicit:
+
+```python
+nozle.cancel_subscription("customer-123", "subscription-123", policy="immediate")
+```
 
 ### Customers and Credit Systems
 
