@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import warnings
 from typing import Mapping, Optional, Union, cast
+from urllib.parse import quote
 
 import requests
 
@@ -20,6 +21,8 @@ from nozle.errors import NozleAPIError, NozleValidationError
 from nozle.margin import MarginClient
 from nozle.track import track as _track
 from nozle.types import (
+    CancellationPolicy,
+    CancelSubscriptionResult,
     CanResult,
     CheckAndDeductResult,
     CheckoutResult,
@@ -152,6 +155,34 @@ class Nozle:
                 "POST",
                 "/api/v1/subscribe",
                 json_body={"plan_code": plan_code, "customer_id": customer_id},
+            ),
+        )
+
+    def cancel_subscription(
+        self,
+        customer_id: str,
+        subscription_id: str,
+        policy: CancellationPolicy = "end_of_period",
+    ) -> CancelSubscriptionResult:
+        operation = "cancel_subscription"
+        require_secret_key(self.api_key, operation)
+        require_non_empty(customer_id, "customer_id", operation)
+        require_non_empty(subscription_id, "subscription_id", operation)
+        if policy not in ("end_of_period", "immediate"):
+            raise NozleValidationError(
+                "cancel_subscription policy must be 'end_of_period' or 'immediate'"
+            )
+
+        return cast(
+            CancelSubscriptionResult,
+            self._engine.request(
+                operation,
+                "DELETE",
+                f"/api/v1/subscriptions/{quote(subscription_id, safe='')}",
+                params={
+                    "customer_id": customer_id,
+                    "cancellation_policy": policy,
+                },
             ),
         )
 

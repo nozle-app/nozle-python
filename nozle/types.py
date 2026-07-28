@@ -80,6 +80,23 @@ class SubscribeResult(TypedDict):
     status: str
 
 
+CancellationPolicy = Literal["end_of_period", "immediate"]
+
+
+class _SubscriptionCancellationRequired(TypedDict):
+    external_id: str
+    status: str
+
+
+class SubscriptionCancellation(_SubscriptionCancellationRequired, total=False):
+    ending_at: Optional[str]
+    terminated_at: Optional[str]
+
+
+class CancelSubscriptionResult(TypedDict):
+    subscription: SubscriptionCancellation
+
+
 class _PingResultRequired(TypedDict):
     ok: bool
     engine: str

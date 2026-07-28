@@ -16,6 +16,8 @@ from nozle.integrations.anthropic import wrap_anthropic
 from nozle.integrations.openai import wrap_openai
 from nozle.margin import MarginClient
 from nozle.types import (
+    CancellationPolicy,
+    CancelSubscriptionResult,
     CanResult,
     CheckAndDeductResult,
     CheckoutResult,
@@ -49,6 +51,7 @@ from nozle.types import (
     ScheduledCheckoutResult,
     StripeCheckoutResult,
     SubscribeResult,
+    SubscriptionCancellation,
     TrackOptions,
     UsageCheckResult,
     UsageDeduction,
@@ -57,6 +60,8 @@ from nozle.types import (
 from nozle.usage import UsageNamespace
 
 __all__ = [
+    "CancellationPolicy",
+    "CancelSubscriptionResult",
     "CanResult",
     "CheckAndDeductResult",
     "CheckoutResult",
@@ -101,6 +106,7 @@ __all__ = [
     "Plan",
     "ScheduledCheckoutResult",
     "StripeCheckoutResult",
+    "SubscriptionCancellation",
     "SubscribeResult",
     "TrackOptions",
     "UsageCheckResult",

@@ -16,7 +16,7 @@ from nozle import (
 
 
 def test_version_metadata_and_runtime_match() -> None:
-    assert __version__ == "0.4.0"
+    assert __version__ == "0.4.1"
     assert version("nozle-sdk") == __version__
 
 
@@ -260,6 +260,62 @@ def test_subscribe_ping_customer_and_check_and_deduct_contracts(
         "feature": "completion",
         "credits": 5,
     }
+
+
+def test_cancel_subscription_defaults_to_end_of_period(
+    requests_mock: requests_mock.Mocker,
+) -> None:
+    requests_mock.delete(
+        "https://engine.example/api/v1/subscriptions/sub%2F1",
+        json={
+            "subscription": {
+                "external_id": "sub/1",
+                "status": "active",
+                "ending_at": "2026-08-14T18:30:00Z",
+            }
+        },
+    )
+    client = Nozle("sk_test", base_url="https://engine.example")
+
+    result = client.cancel_subscription("customer 1", "sub/1")
+
+    assert result["subscription"]["status"] == "active"
+    assert result["subscription"]["ending_at"] == "2026-08-14T18:30:00Z"
+    assert requests_mock.last_request.qs == {
+        "customer_id": ["customer 1"],
+        "cancellation_policy": ["end_of_period"],
+    }
+
+
+def test_cancel_subscription_supports_explicit_immediate_policy(
+    requests_mock: requests_mock.Mocker,
+) -> None:
+    requests_mock.delete(
+        "http://localhost:8080/api/v1/subscriptions/sub_1",
+        json={"subscription": {"external_id": "sub_1", "status": "terminated"}},
+    )
+
+    Nozle("sk_test").cancel_subscription("cust_1", "sub_1", policy="immediate")
+
+    assert requests_mock.last_request.qs["cancellation_policy"] == ["immediate"]
+
+
+def test_cancel_subscription_rejects_invalid_policy_before_network(
+    requests_mock: requests_mock.Mocker,
+) -> None:
+    with pytest.raises(NozleValidationError, match="policy"):
+        Nozle("sk_test").cancel_subscription(  # type: ignore[arg-type]
+            "cust_1", "sub_1", policy="whenever"
+        )
+    assert requests_mock.request_history == []
+
+
+def test_cancel_subscription_rejects_publishable_key_before_network(
+    requests_mock: requests_mock.Mocker,
+) -> None:
+    with pytest.raises(NozleValidationError, match="secret key"):
+        Nozle("pk_browser").cancel_subscription("cust_1", "sub_1")
+    assert requests_mock.request_history == []
 
 
 def test_margin_routes_and_trend_query(requests_mock: requests_mock.Mocker) -> None:
