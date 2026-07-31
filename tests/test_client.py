@@ -16,7 +16,7 @@ from nozle import (
 
 
 def test_version_metadata_and_runtime_match() -> None:
-    assert __version__ == "0.4.1"
+    assert __version__ == "0.4.2"
     assert version("nozle-sdk") == __version__
 
 
@@ -315,6 +315,77 @@ def test_cancel_subscription_rejects_publishable_key_before_network(
 ) -> None:
     with pytest.raises(NozleValidationError, match="secret key"):
         Nozle("pk_browser").cancel_subscription("cust_1", "sub_1")
+    assert requests_mock.request_history == []
+
+
+def test_subscription_transition_preview_uses_explicit_defaults(
+    requests_mock: requests_mock.Mocker,
+) -> None:
+    requests_mock.post(
+        "https://engine.example/api/v1/subscriptions/transitions/preview",
+        json={"subscription_transition": {"amount_due_cents": 0}},
+    )
+    client = Nozle("sk_test", base_url="https://engine.example")
+
+    client.preview_subscription_transition(
+        {
+            "customer_id": "customer-1",
+            "subscription_id": "sub-1",
+            "operation": "cancel",
+            "timing": "end_of_period",
+        }
+    )
+
+    assert requests_mock.last_request.json() == {
+        "customer_id": "customer-1",
+        "subscription_id": "sub-1",
+        "operation": "cancel",
+        "timing": "end_of_period",
+        "target_plan_code": None,
+        "credit_action": "none",
+        "final_invoice_action": "generate",
+    }
+
+
+def test_subscription_transition_apply_forwards_idempotency(
+    requests_mock: requests_mock.Mocker,
+) -> None:
+    requests_mock.post(
+        "https://engine.example/api/v1/subscriptions/transitions",
+        json={"subscription_transition": {"id": "transition-1"}},
+    )
+    client = Nozle("sk_test", base_url="https://engine.example")
+
+    client.apply_subscription_transition(
+        {
+            "customer_id": "customer-1",
+            "subscription_id": "sub-1",
+            "operation": "downgrade",
+            "timing": "immediate",
+            "target_plan_code": "starter",
+            "credit_action": "refund",
+            "final_invoice_action": "generate",
+        },
+        idempotency_key="downgrade-1",
+    )
+
+    assert requests_mock.last_request.headers["Idempotency-Key"] == "downgrade-1"
+
+
+def test_subscription_transition_rejects_unsafe_shape_before_network(
+    requests_mock: requests_mock.Mocker,
+) -> None:
+    with pytest.raises(NozleValidationError, match="forbidden"):
+        Nozle("sk_test").apply_subscription_transition(
+            {
+                "customer_id": "customer-1",
+                "subscription_id": "sub-1",
+                "operation": "cancel",
+                "timing": "immediate",
+                "target_plan_code": "starter",
+            },
+            idempotency_key="transition-1",
+        )
     assert requests_mock.request_history == []
 
 

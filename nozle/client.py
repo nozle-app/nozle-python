@@ -31,6 +31,9 @@ from nozle.types import (
     PingResult,
     Plan,
     SubscribeResult,
+    SubscriptionTransitionParams,
+    SubscriptionTransitionPreview,
+    SubscriptionTransitionResult,
 )
 from nozle.usage import UsageNamespace
 
@@ -185,6 +188,91 @@ class Nozle:
                 },
             ),
         )
+
+    def preview_subscription_transition(
+        self,
+        params: SubscriptionTransitionParams,
+    ) -> SubscriptionTransitionPreview:
+        operation = "preview_subscription_transition"
+        body = self._subscription_transition_body(params, operation)
+        return cast(
+            SubscriptionTransitionPreview,
+            self._engine.request(
+                operation,
+                "POST",
+                "/api/v1/subscriptions/transitions/preview",
+                json_body=body,
+            ),
+        )
+
+    def apply_subscription_transition(
+        self,
+        params: SubscriptionTransitionParams,
+        *,
+        idempotency_key: str,
+    ) -> SubscriptionTransitionResult:
+        operation = "apply_subscription_transition"
+        body = self._subscription_transition_body(params, operation)
+        require_non_empty(idempotency_key, "idempotency_key", operation)
+        if len(idempotency_key.encode("utf-8")) > 255:
+            raise NozleValidationError(
+                "apply_subscription_transition idempotency_key must not exceed 255 bytes"
+            )
+        return cast(
+            SubscriptionTransitionResult,
+            self._engine.request(
+                operation,
+                "POST",
+                "/api/v1/subscriptions/transitions",
+                json_body=body,
+                headers={"Idempotency-Key": idempotency_key},
+            ),
+        )
+
+    def _subscription_transition_body(
+        self,
+        params: SubscriptionTransitionParams,
+        operation_name: str,
+    ) -> JSONMapping:
+        require_secret_key(self.api_key, operation_name)
+        customer_id = str(params.get("customer_id", "")).strip()
+        subscription_id = str(params.get("subscription_id", "")).strip()
+        require_non_empty(customer_id, "customer_id", operation_name)
+        require_non_empty(subscription_id, "subscription_id", operation_name)
+
+        transition_operation = params.get("operation")
+        timing = params.get("timing")
+        target_plan_code = str(params.get("target_plan_code", "")).strip()
+        credit_action = params.get("credit_action", "none")
+        final_invoice_action = params.get("final_invoice_action", "generate")
+        if transition_operation not in ("cancel", "downgrade"):
+            raise NozleValidationError("operation must be 'cancel' or 'downgrade'")
+        if timing not in ("end_of_period", "immediate"):
+            raise NozleValidationError("timing must be 'end_of_period' or 'immediate'")
+        if credit_action not in ("credit", "refund", "offset", "none"):
+            raise NozleValidationError(
+                "credit_action must be 'credit', 'refund', 'offset', or 'none'"
+            )
+        if final_invoice_action not in ("generate", "skip"):
+            raise NozleValidationError(
+                "final_invoice_action must be 'generate' or 'skip'"
+            )
+        if transition_operation == "cancel" and target_plan_code:
+            raise NozleValidationError("target_plan_code is forbidden for cancellation")
+        if transition_operation == "downgrade" and not target_plan_code:
+            raise NozleValidationError("target_plan_code is required for downgrade")
+        if timing == "end_of_period" and credit_action != "none":
+            raise NozleValidationError("end_of_period transitions require credit_action 'none'")
+
+        return {
+            "customer_id": customer_id,
+            "subscription_id": subscription_id,
+            "operation": transition_operation,
+            "timing": timing,
+            "target_plan_code": target_plan_code or None,
+            "credit_action": credit_action,
+            "final_invoice_action": final_invoice_action,
+        }
 
     def ping(self) -> PingResult:
         require_secret_key(self.api_key, "ping")

@@ -97,6 +97,55 @@ class CancelSubscriptionResult(TypedDict):
     subscription: SubscriptionCancellation
 
 
+SubscriptionTransitionOperation = Literal["cancel", "downgrade"]
+SubscriptionTransitionTiming = Literal["end_of_period", "immediate"]
+SubscriptionTransitionCreditAction = Literal["credit", "refund", "offset", "none"]
+SubscriptionTransitionFinalInvoiceAction = Literal["generate", "skip"]
+
+
+class SubscriptionTransitionParams(TypedDict, total=False):
+    customer_id: str
+    subscription_id: str
+    operation: SubscriptionTransitionOperation
+    timing: SubscriptionTransitionTiming
+    target_plan_code: str
+    credit_action: SubscriptionTransitionCreditAction
+    final_invoice_action: SubscriptionTransitionFinalInvoiceAction
+
+
+class SubscriptionTransitionPreviewBody(TypedDict, total=False):
+    operation: SubscriptionTransitionOperation
+    timing: SubscriptionTransitionTiming
+    credit_action: SubscriptionTransitionCreditAction
+    final_invoice_action: SubscriptionTransitionFinalInvoiceAction
+    effective_at: str
+    renewal_at: Optional[str]
+    credit_amount_cents: int
+    refund_amount_cents: int
+    offset_amount_cents: int
+    amount_due_cents: int
+    currency: str
+
+
+class SubscriptionTransitionPreview(TypedDict):
+    subscription_transition: SubscriptionTransitionPreviewBody
+
+
+class SubscriptionTransitionResultBody(SubscriptionTransitionPreviewBody, total=False):
+    id: str
+    replayed: bool
+    subscription_id: str
+    external_subscription_id: str
+    plan_code: str
+    status: str
+    credit_note_id: str
+    invoice_id: str
+
+
+class SubscriptionTransitionResult(TypedDict):
+    subscription_transition: SubscriptionTransitionResultBody
+
+
 class _PingResultRequired(TypedDict):
     ok: bool
     engine: str
