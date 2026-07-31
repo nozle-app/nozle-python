@@ -254,9 +254,7 @@ class Nozle:
                 "credit_action must be 'credit', 'refund', 'offset', or 'none'"
             )
         if final_invoice_action not in ("generate", "skip"):
-            raise NozleValidationError(
-                "final_invoice_action must be 'generate' or 'skip'"
-            )
+            raise NozleValidationError("final_invoice_action must be 'generate' or 'skip'")
         if transition_operation == "cancel" and target_plan_code:
             raise NozleValidationError("target_plan_code is forbidden for cancellation")
         if transition_operation == "downgrade" and not target_plan_code:
