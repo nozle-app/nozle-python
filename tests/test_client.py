@@ -318,7 +318,7 @@ def test_cancel_subscription_rejects_publishable_key_before_network(
     assert requests_mock.request_history == []
 
 
-def test_subscription_transition_preview_uses_explicit_defaults(
+def test_subscription_transition_preview_leaves_defaults_to_merchant_policy(
     requests_mock: requests_mock.Mocker,
 ) -> None:
     requests_mock.post(
@@ -341,9 +341,6 @@ def test_subscription_transition_preview_uses_explicit_defaults(
         "subscription_id": "sub-1",
         "operation": "cancel",
         "timing": "end_of_period",
-        "target_plan_code": None,
-        "credit_action": "none",
-        "final_invoice_action": "generate",
     }
 
 
@@ -364,12 +361,37 @@ def test_subscription_transition_apply_forwards_idempotency(
             "timing": "immediate",
             "target_plan_code": "starter",
             "credit_action": "refund",
+            "refund_mode": "full",
             "final_invoice_action": "generate",
         },
         idempotency_key="downgrade-1",
     )
 
     assert requests_mock.last_request.headers["Idempotency-Key"] == "downgrade-1"
+
+
+def test_subscription_transition_uncancel_has_no_settlement_options(
+    requests_mock: requests_mock.Mocker,
+) -> None:
+    requests_mock.post(
+        "https://engine.example/api/v1/subscriptions/transitions",
+        json={"subscription_transition": {"id": "transition-2"}},
+    )
+
+    Nozle("sk_test", base_url="https://engine.example").apply_subscription_transition(
+        {
+            "customer_id": "customer-1",
+            "subscription_id": "sub-1",
+            "operation": "uncancel",
+        },
+        idempotency_key="uncancel-1",
+    )
+
+    assert requests_mock.last_request.json() == {
+        "customer_id": "customer-1",
+        "subscription_id": "sub-1",
+        "operation": "uncancel",
+    }
 
 
 def test_subscription_transition_rejects_unsafe_shape_before_network(

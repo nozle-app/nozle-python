@@ -97,9 +97,12 @@ class CancelSubscriptionResult(TypedDict):
     subscription: SubscriptionCancellation
 
 
-SubscriptionTransitionOperation = Literal["cancel", "downgrade"]
+SubscriptionTransitionOperation = Literal["cancel", "downgrade", "uncancel"]
 SubscriptionTransitionTiming = Literal["end_of_period", "immediate"]
+SubscriptionTransitionBillingAnchor = Literal["keep_anchor", "reset_anchor"]
+SubscriptionTransitionProrationBehavior = Literal["prorate_immediately", "none"]
 SubscriptionTransitionCreditAction = Literal["credit", "refund", "offset", "none"]
+SubscriptionTransitionRefundMode = Literal["prorated", "full"]
 SubscriptionTransitionFinalInvoiceAction = Literal["generate", "skip"]
 
 
@@ -109,14 +112,20 @@ class SubscriptionTransitionParams(TypedDict, total=False):
     operation: SubscriptionTransitionOperation
     timing: SubscriptionTransitionTiming
     target_plan_code: str
+    billing_anchor: SubscriptionTransitionBillingAnchor
+    proration_behavior: SubscriptionTransitionProrationBehavior
     credit_action: SubscriptionTransitionCreditAction
+    refund_mode: SubscriptionTransitionRefundMode
     final_invoice_action: SubscriptionTransitionFinalInvoiceAction
 
 
 class SubscriptionTransitionPreviewBody(TypedDict, total=False):
     operation: SubscriptionTransitionOperation
     timing: SubscriptionTransitionTiming
+    billing_anchor: SubscriptionTransitionBillingAnchor
+    proration_behavior: SubscriptionTransitionProrationBehavior
     credit_action: SubscriptionTransitionCreditAction
+    refund_mode: SubscriptionTransitionRefundMode
     final_invoice_action: SubscriptionTransitionFinalInvoiceAction
     effective_at: str
     renewal_at: Optional[str]
