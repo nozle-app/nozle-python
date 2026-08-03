@@ -16,7 +16,7 @@ from nozle import (
 
 
 def test_version_metadata_and_runtime_match() -> None:
-    assert __version__ == "0.4.2"
+    assert __version__ == "0.5.0"
     assert version("nozle-sdk") == __version__
 
 
@@ -34,6 +34,7 @@ def test_client_initializes_namespaces_and_strips_slashes() -> None:
     assert client.credit_systems is not None
     assert client.credits is not None
     assert client.entities is not None
+    assert client.entity_subscriptions is not None
     assert client.usage is not None
     assert client.margin is not None
 
