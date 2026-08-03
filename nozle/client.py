@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import warnings
-from typing import Mapping, Optional, Union, cast
+from typing import Any, Mapping, Optional, Union, cast
 from urllib.parse import quote
 
 import requests
@@ -31,6 +31,9 @@ from nozle.types import (
     PingResult,
     Plan,
     SubscribeResult,
+    SubscriptionTransitionParams,
+    SubscriptionTransitionPreview,
+    SubscriptionTransitionResult,
 )
 from nozle.usage import UsageNamespace
 
@@ -185,6 +188,129 @@ class Nozle:
                 },
             ),
         )
+
+    def preview_subscription_transition(
+        self,
+        params: SubscriptionTransitionParams,
+    ) -> SubscriptionTransitionPreview:
+        operation = "preview_subscription_transition"
+        body = self._subscription_transition_body(params, operation)
+        return cast(
+            SubscriptionTransitionPreview,
+            self._engine.request(
+                operation,
+                "POST",
+                "/api/v1/subscriptions/transitions/preview",
+                json_body=body,
+            ),
+        )
+
+    def apply_subscription_transition(
+        self,
+        params: SubscriptionTransitionParams,
+        *,
+        idempotency_key: str,
+    ) -> SubscriptionTransitionResult:
+        operation = "apply_subscription_transition"
+        body = self._subscription_transition_body(params, operation)
+        require_non_empty(idempotency_key, "idempotency_key", operation)
+        if len(idempotency_key.encode("utf-8")) > 255:
+            raise NozleValidationError(
+                "apply_subscription_transition idempotency_key must not exceed 255 bytes"
+            )
+        return cast(
+            SubscriptionTransitionResult,
+            self._engine.request(
+                operation,
+                "POST",
+                "/api/v1/subscriptions/transitions",
+                json_body=body,
+                headers={"Idempotency-Key": idempotency_key},
+            ),
+        )
+
+    def _subscription_transition_body(
+        self,
+        params: SubscriptionTransitionParams,
+        operation_name: str,
+    ) -> JSONMapping:
+        require_secret_key(self.api_key, operation_name)
+        customer_id = str(params.get("customer_id", "")).strip()
+        subscription_id = str(params.get("subscription_id", "")).strip()
+        require_non_empty(customer_id, "customer_id", operation_name)
+        require_non_empty(subscription_id, "subscription_id", operation_name)
+
+        transition_operation = params.get("operation")
+        timing = params.get("timing")
+        target_plan_code = str(params.get("target_plan_code", "")).strip()
+        billing_anchor = params.get("billing_anchor")
+        proration_behavior = params.get("proration_behavior")
+        credit_action = params.get("credit_action")
+        refund_mode = params.get("refund_mode")
+        final_invoice_action = params.get("final_invoice_action")
+        if transition_operation not in ("cancel", "downgrade", "uncancel"):
+            raise NozleValidationError("operation must be 'cancel', 'downgrade', or 'uncancel'")
+        if timing is not None and timing not in ("end_of_period", "immediate"):
+            raise NozleValidationError("timing must be 'end_of_period' or 'immediate'")
+        if billing_anchor is not None and billing_anchor not in ("keep_anchor", "reset_anchor"):
+            raise NozleValidationError("billing_anchor must be 'keep_anchor' or 'reset_anchor'")
+        if proration_behavior is not None and proration_behavior not in (
+            "prorate_immediately",
+            "none",
+        ):
+            raise NozleValidationError("proration_behavior must be 'prorate_immediately' or 'none'")
+        if credit_action is not None and credit_action not in (
+            "credit",
+            "refund",
+            "offset",
+            "none",
+        ):
+            raise NozleValidationError(
+                "credit_action must be 'credit', 'refund', 'offset', or 'none'"
+            )
+        if refund_mode is not None and refund_mode not in ("prorated", "full"):
+            raise NozleValidationError("refund_mode must be 'prorated' or 'full'")
+        if final_invoice_action is not None and final_invoice_action not in ("generate", "skip"):
+            raise NozleValidationError("final_invoice_action must be 'generate' or 'skip'")
+        if transition_operation in ("cancel", "uncancel") and target_plan_code:
+            raise NozleValidationError(
+                "target_plan_code is forbidden for cancellation and uncancel"
+            )
+        if transition_operation == "downgrade" and not target_plan_code:
+            raise NozleValidationError("target_plan_code is required for downgrade")
+        if timing == "end_of_period" and credit_action not in (None, "none"):
+            raise NozleValidationError("end_of_period transitions require credit_action 'none'")
+        if refund_mode == "full" and credit_action != "refund":
+            raise NozleValidationError("full refund_mode requires credit_action 'refund'")
+        if transition_operation == "uncancel" and any(
+            value is not None
+            for value in (
+                timing,
+                billing_anchor,
+                proration_behavior,
+                credit_action,
+                refund_mode,
+                final_invoice_action,
+            )
+        ):
+            raise NozleValidationError("uncancel does not accept settlement options")
+
+        payload: dict[str, Any] = {
+            "customer_id": customer_id,
+            "subscription_id": subscription_id,
+            "operation": transition_operation,
+        }
+        optional_values = {
+            "timing": timing,
+            "target_plan_code": target_plan_code or None,
+            "billing_anchor": billing_anchor,
+            "proration_behavior": proration_behavior,
+            "credit_action": credit_action,
+            "refund_mode": refund_mode,
+            "final_invoice_action": final_invoice_action,
+        }
+        payload.update({key: value for key, value in optional_values.items() if value is not None})
+        return payload
 
     def ping(self) -> PingResult:
         require_secret_key(self.api_key, "ping")
