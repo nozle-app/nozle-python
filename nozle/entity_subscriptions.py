@@ -152,9 +152,7 @@ class EntitySubscriptionsNamespace:
         self._validate_path(customer_id, entity_id, operation)
         require_non_empty(plan_code, "plan_code", operation)
         if billing_time is not None and billing_time not in ("calendar", "anniversary"):
-            raise NozleValidationError(
-                f"{operation} billing_time must be calendar or anniversary"
-            )
+            raise NozleValidationError(f"{operation} billing_time must be calendar or anniversary")
         headers = None
         if idempotency_key is not None:
             validate_idempotency_key(idempotency_key, operation)
