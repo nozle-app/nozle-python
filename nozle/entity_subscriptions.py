@@ -24,7 +24,7 @@ from nozle.types import (
 
 
 class EntitySubscriptionsNamespace:
-    """Manage first-class Lago subscriptions owned by customer Entities."""
+    """Manage first-class Nozle subscriptions owned by customer Entities."""
 
     def __init__(self, transport: HttpTransport, api_key: str) -> None:
         self._transport = transport
