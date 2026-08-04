@@ -50,6 +50,8 @@ class StripeCheckoutResult(_StripeCheckoutRequired, total=False):
     invoice_id: str
     amount_cents: int
     currency: str
+    external_entity_id: str
+    external_subscription_id: str
 
 
 class _CompletedCheckoutRequired(TypedDict):
@@ -60,6 +62,8 @@ class _CompletedCheckoutRequired(TypedDict):
 class CompletedCheckoutResult(_CompletedCheckoutRequired, total=False):
     subscription_id: str
     plan_code: str
+    external_entity_id: str
+    external_subscription_id: str
 
 
 class _ScheduledCheckoutRequired(TypedDict):
@@ -70,9 +74,44 @@ class _ScheduledCheckoutRequired(TypedDict):
 class ScheduledCheckoutResult(_ScheduledCheckoutRequired, total=False):
     subscription_id: str
     plan_code: str
+    external_entity_id: str
+    external_subscription_id: str
 
 
 CheckoutResult = Union[StripeCheckoutResult, CompletedCheckoutResult, ScheduledCheckoutResult]
+
+
+class EntitySubscriptionPlan(TypedDict):
+    code: str
+    name: str
+    interval: str
+    amount_cents: int
+    amount_currency: str
+    status: str
+    effective_at: Optional[str]
+
+
+class EntitySubscription(TypedDict):
+    external_customer_id: str
+    external_entity_id: str
+    external_subscription_id: str
+    status: str
+    current_plan: Optional[EntitySubscriptionPlan]
+    pending_plan: Optional[EntitySubscriptionPlan]
+    billing_time: Optional[str]
+    subscription_at: Optional[str]
+    started_at: Optional[str]
+    current_period_start: Optional[str]
+    current_period_end: Optional[str]
+    ending_at: Optional[str]
+    canceled_at: Optional[str]
+    cancel_at_period_end: Optional[bool]
+    created_at: str
+    updated_at: str
+
+
+class EntitySubscriptionList(TypedDict):
+    entity_subscriptions: List[EntitySubscription]
 
 
 class SubscribeResult(TypedDict):
@@ -152,6 +191,11 @@ class SubscriptionTransitionResultBody(SubscriptionTransitionPreviewBody, total=
 
 
 class SubscriptionTransitionResult(TypedDict):
+    subscription_transition: SubscriptionTransitionResultBody
+
+
+class EntitySubscriptionCancelResult(TypedDict):
+    entity_subscription: EntitySubscription
     subscription_transition: SubscriptionTransitionResultBody
 
 

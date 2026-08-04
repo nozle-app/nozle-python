@@ -4,6 +4,7 @@ from nozle.credit_systems import CreditSystemsNamespace
 from nozle.credits import CreditsNamespace
 from nozle.customers import CustomersNamespace
 from nozle.entities import EntitiesNamespace
+from nozle.entity_subscriptions import EntitySubscriptionsNamespace
 from nozle.errors import (
     NozleAPIError,
     NozleAuthenticationError,
@@ -45,6 +46,10 @@ from nozle.types import (
     EntityCreditPoolPolicy,
     EntityCreditTransferResult,
     EntityCreditTransferSource,
+    EntitySubscription,
+    EntitySubscriptionCancelResult,
+    EntitySubscriptionList,
+    EntitySubscriptionPlan,
     JSONMapping,
     PingResult,
     Plan,
@@ -103,6 +108,11 @@ __all__ = [
     "EntityCreditTransferResult",
     "EntityCreditTransferSource",
     "EntitiesNamespace",
+    "EntitySubscriptionsNamespace",
+    "EntitySubscription",
+    "EntitySubscriptionCancelResult",
+    "EntitySubscriptionList",
+    "EntitySubscriptionPlan",
     "JSONMapping",
     "MarginClient",
     "Nozle",

@@ -17,6 +17,7 @@ from nozle.credit_systems import CreditSystemsNamespace
 from nozle.credits import CreditsNamespace
 from nozle.customers import CustomersNamespace
 from nozle.entities import EntitiesNamespace
+from nozle.entity_subscriptions import EntitySubscriptionsNamespace
 from nozle.errors import NozleAPIError, NozleValidationError
 from nozle.margin import MarginClient
 from nozle.track import track as _track
@@ -69,6 +70,7 @@ class Nozle:
         self.credit_systems = CreditSystemsNamespace(self._events, self.api_key)
         self.credits = CreditsNamespace(self._engine, self.api_key)
         self.entities = EntitiesNamespace(self._engine, self.api_key)
+        self.entity_subscriptions = EntitySubscriptionsNamespace(self._events, self.api_key)
         self.usage = UsageNamespace(self._engine, self.api_key)
         self._sub_cache: dict[str, str] = {}
 
