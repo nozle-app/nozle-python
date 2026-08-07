@@ -95,3 +95,73 @@ def test_entity_subscription_cancel_and_local_validation(
         namespace.checkout("workspace", "user-42", plan_code="pro", billing_time="weekly")
     with pytest.raises(NozleAuthenticationError, match="secret key"):
         Nozle("pk_browser").entity_subscriptions.get("workspace", "user-42")
+
+
+def test_bulk_entity_subscription_checkout(requests_mock: requests_mock.Mocker) -> None:
+    path = "https://core.example/api/v1/customers/workspace%2F1/entity-subscriptions/checkout"
+    requests_mock.post(
+        path,
+        json={
+            "entity_subscription_checkout": {
+                "id": "batch-1",
+                "type": "stripe",
+                "status": "open",
+                "client_secret": "cs_bulk",
+                "invoice_id": "invoice-1",
+                "amount_cents": 4498,
+                "currency": "USD",
+                "replayed": False,
+                "expires_at": "2026-08-07T12:00:00Z",
+                "items": [
+                    {
+                        "external_entity_id": "seat-pro-1",
+                        "external_subscription_id": "entity-sub-1",
+                        "plan_code": "pro",
+                        "subscription_status": "incomplete",
+                    }
+                ],
+            }
+        },
+    )
+    namespace = Nozle("sk_test", events_url="https://core.example").entity_subscriptions
+
+    result = namespace.checkout_many(
+        "workspace/1",
+        billing_time="anniversary",
+        return_url="https://wrrk.ai/settings/billing",
+        idempotency_key="workspace-1-seat-purchase",
+        items=[{"external_entity_id": "seat-pro-1", "plan_code": "pro"}],
+    )
+
+    assert result["client_secret"] == "cs_bulk"
+    assert requests_mock.last_request.headers["Idempotency-Key"] == "workspace-1-seat-purchase"
+    assert requests_mock.last_request.json() == {
+        "entity_subscription_checkout": {
+            "billing_time": "anniversary",
+            "return_url": "https://wrrk.ai/settings/billing",
+            "items": [{"external_entity_id": "seat-pro-1", "plan_code": "pro"}],
+        }
+    }
+
+
+def test_bulk_entity_subscription_checkout_validates_before_network(
+    requests_mock: requests_mock.Mocker,
+) -> None:
+    namespace = Nozle("sk_test").entity_subscriptions
+
+    with pytest.raises(NozleValidationError, match="unique external_entity_id"):
+        namespace.checkout_many(
+            "workspace",
+            idempotency_key="purchase-1",
+            items=[
+                {"external_entity_id": "seat-1", "plan_code": "pro"},
+                {"external_entity_id": "seat-1", "plan_code": "max"},
+            ],
+        )
+    with pytest.raises(NozleAuthenticationError, match="secret key"):
+        Nozle("pk_browser").entity_subscriptions.checkout_many(
+            "workspace",
+            idempotency_key="purchase-1",
+            items=[{"external_entity_id": "seat-1", "plan_code": "pro"}],
+        )
+    assert not requests_mock.called

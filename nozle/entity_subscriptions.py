@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import cast
+from typing import Sequence, cast
 
 from nozle._transport import HttpTransport
 from nozle._validation import (
@@ -15,6 +15,8 @@ from nozle.types import (
     CheckoutResult,
     EntitySubscription,
     EntitySubscriptionCancelResult,
+    EntitySubscriptionCheckoutItem,
+    EntitySubscriptionCheckoutManyResult,
     EntitySubscriptionList,
     SubscriptionTransitionCreditAction,
     SubscriptionTransitionFinalInvoiceAction,
@@ -77,6 +79,59 @@ class EntitySubscriptionsNamespace:
             return_url=return_url,
             billing_time=billing_time,
             idempotency_key=idempotency_key,
+        )
+
+    def checkout_many(
+        self,
+        customer_id: str,
+        *,
+        items: Sequence[EntitySubscriptionCheckoutItem],
+        idempotency_key: str,
+        return_url: str | None = None,
+        billing_time: str | None = None,
+    ) -> EntitySubscriptionCheckoutManyResult:
+        operation = "entity_subscriptions.checkout_many"
+        require_secret_key(self._api_key, operation)
+        require_non_empty(customer_id, "customer_id", operation)
+        validate_idempotency_key(idempotency_key, operation)
+        if len(items) < 1 or len(items) > 100:
+            raise NozleValidationError(f"{operation} requires between 1 and 100 items")
+        if billing_time is not None and billing_time not in ("calendar", "anniversary"):
+            raise NozleValidationError(f"{operation} billing_time must be calendar or anniversary")
+
+        entity_ids: set[str] = set()
+        request_items: list[dict[str, str]] = []
+        for item in items:
+            entity_id = item.get("external_entity_id")
+            plan_code = item.get("plan_code")
+            if not isinstance(entity_id, str):
+                raise NozleValidationError(f"{operation} requires every external_entity_id")
+            validate_entity_id(entity_id, operation)
+            entity_id = entity_id.strip()
+            if entity_id in entity_ids:
+                raise NozleValidationError(f"{operation} requires unique external_entity_id values")
+            entity_ids.add(entity_id)
+            if not isinstance(plan_code, str):
+                raise NozleValidationError(f"{operation} requires every plan_code")
+            plan_code = require_non_empty(plan_code, "items[].plan_code", operation).strip()
+            request_items.append({"external_entity_id": entity_id, "plan_code": plan_code})
+
+        payload = self._transport.request(
+            operation,
+            "POST",
+            f"/api/v1/customers/{path_segment(customer_id)}/entity-subscriptions/checkout",
+            json_body={
+                "entity_subscription_checkout": {
+                    "billing_time": billing_time,
+                    "return_url": return_url,
+                    "items": request_items,
+                }
+            },
+            headers={"Idempotency-Key": idempotency_key},
+        )
+        return cast(
+            EntitySubscriptionCheckoutManyResult,
+            payload["entity_subscription_checkout"],
         )
 
     def change_plan(

@@ -1,8 +1,7 @@
 # Nozle Python SDK
 
 Backend-only Python SDK for Nozle billing, exact-decimal credits, Entity lifecycle,
-ledger usage, margin intelligence, and LLM usage capture. Version 0.4.1 mirrors the
-backend contract exposed by `@nozle-js/node` 0.4.1.
+ledger usage, margin intelligence, and LLM usage capture.
 
 ## Install
 
@@ -79,6 +78,24 @@ Immediate termination must be explicit:
 ```python
 nozle.cancel_subscription("customer-123", "subscription-123", policy="immediate")
 ```
+
+Create one payment for a mixed basket of Entity plans:
+
+```python
+checkout = nozle.entity_subscriptions.checkout_many(
+    "workspace_123",
+    billing_time="anniversary",
+    return_url="https://app.example.com/settings/billing",
+    idempotency_key="workspace-123-seat-purchase-v1",
+    items=[
+        {"external_entity_id": "seat_pro_001", "plan_code": "pro_monthly"},
+        {"external_entity_id": "seat_max_001", "plan_code": "max_monthly"},
+    ],
+)
+```
+
+Return the checkout result to the authenticated frontend and mount
+`checkout["client_secret"]` using `@nozle-js/react`. Never expose the secret key.
 
 ### Customers and Credit Systems
 
