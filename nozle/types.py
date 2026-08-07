@@ -114,6 +114,31 @@ class EntitySubscriptionList(TypedDict):
     entity_subscriptions: List[EntitySubscription]
 
 
+class EntitySubscriptionCheckoutItem(TypedDict):
+    external_entity_id: str
+    plan_code: str
+
+
+class EntitySubscriptionCheckoutItemResult(TypedDict):
+    external_entity_id: str
+    external_subscription_id: str
+    plan_code: str
+    subscription_status: str
+
+
+class EntitySubscriptionCheckoutManyResult(TypedDict):
+    id: str
+    type: Literal["stripe", "processing", "completed"]
+    status: str
+    client_secret: Optional[str]
+    invoice_id: str
+    amount_cents: int
+    currency: str
+    replayed: bool
+    expires_at: Optional[str]
+    items: List[EntitySubscriptionCheckoutItemResult]
+
+
 class SubscribeResult(TypedDict):
     subscription_id: str
     status: str
