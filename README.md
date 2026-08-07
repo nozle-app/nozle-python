@@ -99,6 +99,9 @@ Return the checkout result to the authenticated frontend and mount
 
 ### Customers and Credit Systems
 
+Customer writes go directly to Nozle Core using the merchant's secret key, so
+Core derives the owning organization from that key.
+
 ```python
 customer = nozle.customers.upsert(
     "customer-123",

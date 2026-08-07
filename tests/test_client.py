@@ -240,27 +240,53 @@ def test_subscribe_ping_customer_and_check_and_deduct_contracts(
         "https://engine.example/api/v1/ping",
         json={"ok": True, "engine": "ok", "version": "1"},
     )
-    requests_mock.post(
-        "https://engine.example/api/v1/customers",
-        json={"external_id": "cust_1", "name": "Acme"},
+    customer_request = requests_mock.post(
+        "https://core.example/api/v1/customers",
+        json={"customer": {"external_id": "cust_1", "name": "Acme"}},
     )
     requests_mock.post(
         "https://engine.example/api/v1/check-and-deduct",
         json={"allowed": True, "remaining": 95},
     )
-    client = Nozle("sk_test", base_url="https://engine.example")
+    client = Nozle(
+        "sk_test",
+        base_url="https://engine.example",
+        events_url="https://core.example",
+    )
 
     assert client.subscribe("cust_1", "pro")["subscription_id"] == "sub_1"
     assert requests_mock.last_request.json() == {"plan_code": "pro", "customer_id": "cust_1"}
     assert client.ping()["ok"] is True
     assert client.customers.upsert("cust_1", name="Acme")["name"] == "Acme"
-    assert requests_mock.last_request.json() == {"external_id": "cust_1", "name": "Acme"}
+    assert customer_request.called_once
+    assert customer_request.last_request.headers["Authorization"] == "Bearer sk_test"
+    assert customer_request.last_request.json() == {
+        "customer": {"external_id": "cust_1", "name": "Acme"}
+    }
     assert client.check_and_deduct("cust_1", "completion", 5)["remaining"] == 95
     assert requests_mock.last_request.json() == {
         "customer_id": "cust_1",
         "feature": "completion",
         "credits": 5,
     }
+
+
+def test_customer_upsert_never_uses_engine(
+    requests_mock: requests_mock.Mocker,
+) -> None:
+    core = requests_mock.post(
+        "https://core.example/api/v1/customers",
+        json={"customer": {"external_id": "cust_1"}},
+    )
+    client = Nozle(
+        "sk_merchant",
+        base_url="https://engine.example",
+        events_url="https://core.example",
+    )
+
+    assert client.customers.upsert("cust_1")["external_id"] == "cust_1"
+    assert core.called_once
+    assert all("engine.example" not in request.url for request in requests_mock.request_history)
 
 
 def test_cancel_subscription_defaults_to_end_of_period(

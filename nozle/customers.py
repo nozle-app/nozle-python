@@ -23,12 +23,15 @@ class CustomersNamespace:
         operation = "customers.upsert"
         require_secret_key(self._api_key, operation)
         require_non_empty(external_id, "external_id", operation)
-        body = {"external_id": external_id}
+        customer = {"external_id": external_id}
         if name is not None:
-            body["name"] = name
+            customer["name"] = name
         if email is not None:
-            body["email"] = email
-        return cast(
-            CustomerUpsertResult,
-            self._transport.request(operation, "POST", "/api/v1/customers", json_body=body),
+            customer["email"] = email
+        payload = self._transport.request(
+            operation,
+            "POST",
+            "/api/v1/customers",
+            json_body={"customer": customer},
         )
+        return cast(CustomerUpsertResult, payload["customer"])

@@ -66,7 +66,7 @@ class Nozle:
         self.margin = MarginClient(
             self.base_url, self.api_key, timeout=self.timeout, _transport=self._engine
         )
-        self.customers = CustomersNamespace(self._engine, self.api_key)
+        self.customers = CustomersNamespace(self._events, self.api_key)
         self.credit_systems = CreditSystemsNamespace(self._events, self.api_key)
         self.credits = CreditsNamespace(self._engine, self.api_key)
         self.entities = EntitiesNamespace(self._engine, self.api_key)
