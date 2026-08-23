@@ -326,7 +326,7 @@ class CreditOperation(TypedDict):
     credit_system_id: str
     credit_system_name: str
     unit_name: str
-    billable_metric_code: Optional[str]
+    feature_code: Optional[str]
     type: CreditOperationType
     status: CreditOperationStatus
     metric_amount: Optional[str]
