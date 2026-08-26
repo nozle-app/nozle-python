@@ -23,7 +23,7 @@ class UsageNamespace:
     def check(
         self,
         customer_id: str,
-        billable_metric_code: str,
+        feature_code: str,
         *,
         entity_id: Optional[str] = None,
         credit_system_code: Optional[str] = None,
@@ -32,10 +32,10 @@ class UsageNamespace:
     ) -> UsageCheckResult:
         operation = "usage.check"
         require_secret_key(self._api_key, operation)
-        self._validate(customer_id, entity_id, billable_metric_code, operation)
+        self._validate(customer_id, entity_id, feature_code, operation)
         body = {
             "customer_id": customer_id,
-            "billable_metric_code": billable_metric_code,
+            "feature_code": feature_code,
             "properties": properties or {},
             "occurred_at": occurred_at or utc_now_rfc3339_milliseconds(),
         }
@@ -51,7 +51,7 @@ class UsageNamespace:
     def track(
         self,
         customer_id: str,
-        billable_metric_code: str,
+        feature_code: str,
         *,
         idempotency_key: str,
         entity_id: Optional[str] = None,
@@ -61,11 +61,11 @@ class UsageNamespace:
     ) -> UsageTrackResult:
         operation = "usage.track"
         require_secret_key(self._api_key, operation)
-        self._validate(customer_id, entity_id, billable_metric_code, operation)
+        self._validate(customer_id, entity_id, feature_code, operation)
         validate_idempotency_key(idempotency_key, operation)
         body = {
             "customer_id": customer_id,
-            "billable_metric_code": billable_metric_code,
+            "feature_code": feature_code,
             "properties": properties or {},
             "timestamp": timestamp or utc_now_rfc3339_milliseconds(),
         }
@@ -88,10 +88,10 @@ class UsageNamespace:
     def _validate(
         customer_id: str,
         entity_id: Optional[str],
-        billable_metric_code: str,
+        feature_code: str,
         operation: str,
     ) -> None:
         require_non_empty(customer_id, "customer_id", operation)
         if entity_id is not None:
             validate_entity_id(entity_id, operation)
-        require_non_empty(billable_metric_code, "billable_metric_code", operation)
+        require_non_empty(feature_code, "feature_code", operation)

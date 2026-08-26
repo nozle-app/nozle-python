@@ -50,7 +50,7 @@ def operation() -> dict[str, object]:
         "credit_system_id": "system-1",
         "credit_system_name": "AI Credits",
         "unit_name": "credit",
-        "billable_metric_code": "agent_execution",
+        "feature_code": "agent_execution",
         "type": "consume",
         "status": "succeeded",
         "metric_amount": "1.000000000001",

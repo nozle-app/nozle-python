@@ -212,7 +212,7 @@ def test_usage_check_is_advisory_and_preserves_exact_decimal_contract(
     assert requests_mock.last_request.headers.get("Idempotency-Key") is None
     assert requests_mock.last_request.json() == {
         "customer_id": "acme",
-        "billable_metric_code": "agent_execution",
+        "feature_code": "agent_execution",
         "properties": {"model": "gpt-5"},
         "occurred_at": "2026-07-20T12:00:00.750Z",
         "entity_id": "user/42",
@@ -255,7 +255,7 @@ def test_usage_track_is_mutating_and_uses_exact_timestamp_and_idempotency(
     assert matcher.last_request.headers["Idempotency-Key"] == "execution-1"
     assert matcher.last_request.json() == {
         "customer_id": "acme",
-        "billable_metric_code": "agent_execution",
+        "feature_code": "agent_execution",
         "properties": {"request": 1},
         "timestamp": "2026-07-20T12:00:00.750Z",
         "entity_id": "user/42",
