@@ -58,7 +58,8 @@ def test_openai_sync_stream_tracks_usage_from_final_chunk() -> None:
         SimpleNamespace(usage=None),
         SimpleNamespace(usage=SimpleNamespace(prompt_tokens=13, completion_tokens=9)),
     ]
-    provider = client_with_create(lambda **_: iter(chunks), "openai")
+    create = Mock(side_effect=lambda **_: iter(chunks))
+    provider = client_with_create(create, "openai")
     tracker = SimpleNamespace(track=Mock())
     wrap_openai(provider, tracker, customer_id="cust_1", feature="assistant")
 
@@ -66,6 +67,7 @@ def test_openai_sync_stream_tracks_usage_from_final_chunk() -> None:
 
     assert returned == chunks
     assert_tracking_contract(tracker.track, "openai", "gpt-stream", 13, 9)
+    assert create.call_args.kwargs["stream_options"] == {"include_usage": True}
 
 
 @pytest.mark.asyncio

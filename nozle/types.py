@@ -23,18 +23,28 @@ class _CanResultRequired(TypedDict):
 
 class CanEconomics(TypedDict, total=False):
     status: Literal["estimated", "not_configured", "unavailable", "stale"]
-    reporting_currency: str
-    estimated_cost: str
-    estimated_revenue: str
-    estimated_margin: str
+    currency: str
+    estimated_incremental_cost: str
+    estimated_incremental_revenue: str
+    estimated_incremental_margin: str
     estimated_margin_percent: str
-    cost_rule_version_ids: List[str]
-    exclusions: List[str]
-    policy_version_id: str
-    policy_decision: Literal["allow", "warn", "deny"]
-    policy_reason: str
+    rule_version_ids: List[str]
+    includes: List[str]
+    excludes: List[str]
     reason: str
     calculated_at: str
+
+
+class CanPolicy(TypedDict, total=False):
+    version_id: str
+    mode: Literal["allow", "warn", "deny"]
+    on_unavailable: Literal["allow", "warn", "deny"]
+    minimum_margin_amount: str
+    minimum_margin_percent: str
+    maximum_estimated_cost: str
+    maximum_snapshot_age_seconds: int
+    decision: Literal["allow", "warn", "deny"]
+    reason: str
 
 
 class CanResult(_CanResultRequired, total=False):
@@ -45,6 +55,7 @@ class CanResult(_CanResultRequired, total=False):
     remaining: int
     overage: bool
     economics: CanEconomics
+    policy: CanPolicy
 
 
 class Plan(TypedDict):

@@ -33,6 +33,11 @@ def wrap_openai(
         started = time.monotonic()
         requested_model = call_parameter(args, kwargs, "model", "")
         is_stream = bool(call_parameter(args, kwargs, "stream", False))
+        if is_stream:
+            kwargs = dict(kwargs)
+            stream_options = dict(kwargs.get("stream_options") or {})
+            stream_options["include_usage"] = True
+            kwargs["stream_options"] = stream_options
         result = original(*args, **kwargs)
         if inspect.isawaitable(result):
             return _await_result(
