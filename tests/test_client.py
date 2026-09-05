@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from importlib.metadata import version
 from typing import Callable
+from uuid import UUID
 
 import pytest
 import requests_mock
@@ -35,6 +36,8 @@ def test_client_initializes_namespaces_and_strips_slashes() -> None:
     assert client.credits is not None
     assert client.entities is not None
     assert client.entity_subscriptions is not None
+    assert client.events is not None
+    assert client.cost_events is not None
     assert client.usage is not None
     assert client.margin is not None
 
@@ -101,9 +104,63 @@ def test_track_with_explicit_subscription_and_timestamp(
 def test_track_generates_transaction_id(requests_mock: requests_mock.Mocker) -> None:
     requests_mock.post("http://localhost:3000/api/v1/events", text="accepted")
 
-    Nozle("sk_test").track("cust_1", "api_call", subscription_id="sub_1")
+    transaction_id = Nozle("sk_test").track("cust_1", "api_call", subscription_id="sub_1")
 
     assert len(requests_mock.last_request.json()["event"]["transaction_id"]) == 36
+    assert transaction_id == requests_mock.last_request.json()["event"]["transaction_id"]
+    assert UUID(transaction_id).version == 7
+
+
+def test_event_and_cost_event_identifier_helpers() -> None:
+    client = Nozle("sk_test")
+
+    assert UUID(client.events.create_transaction_id()).version == 7
+    assert UUID(client.cost_events.create_cost_event_id()).version == 7
+
+
+def test_cost_event_track(requests_mock: requests_mock.Mocker) -> None:
+    requests_mock.post(
+        "https://engine.example/api/v1/cost-events",
+        status_code=202,
+        json={"status": "accepted", "cost_event_id": "cost_123"},
+    )
+    client = Nozle("sk_test", base_url="https://engine.example")
+
+    result = client.cost_events.track(
+        cost_event_id="cost_123",
+        cost_meter_code="ai_tokens",
+        parent_transaction_id="feature_123",
+        external_customer_id="customer_123",
+        request_id="provider_123",
+        operation_key="planning",
+        properties={"tokens": 900},
+        timestamp=1788345001,
+    )
+
+    assert result == {"status": "accepted", "cost_event_id": "cost_123"}
+    assert requests_mock.last_request.json() == {
+        "cost_event_id": "cost_123",
+        "cost_meter_code": "ai_tokens",
+        "parent_transaction_id": "feature_123",
+        "external_customer_id": "customer_123",
+        "request_id": "provider_123",
+        "operation_key": "planning",
+        "properties": {"tokens": 900},
+        "timestamp": 1788345001,
+    }
+
+
+def test_cost_event_track_rejects_invalid_calls_before_network(
+    requests_mock: requests_mock.Mocker,
+) -> None:
+    with pytest.raises(NozleValidationError, match="parent_transaction_id"):
+        Nozle("sk_test").cost_events.track(cost_meter_code="email")
+    with pytest.raises(NozleAuthenticationError, match="secret key"):
+        Nozle("pk_browser").cost_events.track(
+            cost_meter_code="email", external_customer_id="customer_123"
+        )
+
+    assert requests_mock.request_history == []
 
 
 def test_track_resolves_and_caches_subscription(requests_mock: requests_mock.Mocker) -> None:
@@ -152,9 +209,15 @@ def test_can_sends_metadata_as_json_query(requests_mock: requests_mock.Mocker) -
         json={
             "allowed": True,
             "used": 5,
-            "cost_per_use_cents": 1,
-            "revenue_per_use_cents": 2,
-            "margin_per_use_cents": 1,
+            "economics": {
+                "status": "estimated",
+                "reporting_currency": "USD",
+                "estimated_cost": "0.01",
+                "estimated_revenue": "0.02",
+                "estimated_margin": "0.01",
+                "estimated_margin_percent": "50",
+                "calculated_at": "2026-09-02T12:00:00Z",
+            },
         },
     )
 

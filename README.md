@@ -36,8 +36,8 @@ nozle = Nozle(
 
 ## Public namespaces
 
-The client exposes `customers`, `credit_systems`, `credits`, `entities`, `usage`, and
-`margin`.
+The client exposes `events`, `cost_events`, `customers`, `credit_systems`, `credits`,
+`entities`, `usage`, and `margin`.
 
 ### Plans and checkout
 
@@ -213,11 +213,19 @@ idempotency key after deciding the failure is safe to retry.
 ## Existing operations
 
 ```python
-nozle.track(
+transaction_id = nozle.track(
     "customer-123",
-    "api_call",
-    metadata={"tokens": 100},
+    "copilot_action",
+    metadata={"mode": "planning"},
     subscription_id="subscription-123",
+)
+
+nozle.cost_events.track(
+    cost_meter_code="ai_tokens",
+    parent_transaction_id=transaction_id,
+    request_id="provider-request-123",
+    operation_key="planning",
+    properties={"model": "gpt-5", "type": "output", "tokens": 900},
 )
 
 entitlement = nozle.can("customer-123", "code_completion")
@@ -230,7 +238,36 @@ trend = nozle.margin.trend(granularity="week")
 ```
 
 If `track()` is called without `subscription_id`, the SDK resolves and caches the
-customer's single active subscription through Core.
+customer's single active subscription through Core. `track()` returns the
+organization-wide `transaction_id`; when none is supplied, the SDK generates a UUID
+version 7 identifier before sending the request. This lets a Cost Event reference the
+Feature Event without waiting for a server response, and out-of-order delivery remains
+safe.
+
+You can generate both identifiers explicitly when coordinating asynchronous work:
+
+```python
+transaction_id = nozle.events.create_transaction_id()
+cost_event_id = nozle.cost_events.create_cost_event_id()
+
+nozle.track(
+    "customer-123",
+    "copilot_action",
+    subscription_id="subscription-123",
+    transaction_id=transaction_id,
+)
+
+nozle.cost_events.track(
+    cost_event_id=cost_event_id,
+    cost_meter_code="ai_tokens",
+    parent_transaction_id=transaction_id,
+    properties={"model": "gpt-5", "type": "input", "tokens": 150},
+)
+```
+
+For a cost attributable to a customer but not one Feature Event, provide
+`external_customer_id` instead of `parent_transaction_id`. Cost Event methods require a
+secret key.
 
 ## OpenAI and Anthropic wrappers
 
@@ -251,6 +288,7 @@ openai = wrap_openai(
     nozle,
     customer_id="customer-123",
     metric_code="llm_tokens",
+    cost_meter_code="ai_tokens",
     feature="assistant",
 )
 
@@ -261,14 +299,21 @@ response = openai.chat.completions.create(
 ```
 
 Synchronous clients, asynchronous clients, synchronous streams, and asynchronous
-streams are supported for OpenAI and Anthropic. The wrappers emit these event
-properties:
+streams are supported for OpenAI and Anthropic. The parent Feature Event contains:
 
 - `model`
+- `provider`
 - `input_tokens`
 - `output_tokens`
 - `latency_ms`
 - optional `feature`
+
+When `cost_meter_code` is set, the wrapper generates the parent `transaction_id`
+before delivery and emits one linked Cost Event for each non-zero token category.
+The canonical Cost Event properties are `tokens`, `provider`, `model`, and `type`.
+OpenAI supports `input`, `cached_input`, `output`, and `reasoning`; Anthropic supports
+`input`, `cached_input`, `cache_write`, and `output`. Parent and child events may
+arrive out of order safely.
 
 Provider failures are propagated. If the provider succeeds but Nozle tracking fails,
 the successful provider response or completed stream is preserved and a
