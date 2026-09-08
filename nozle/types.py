@@ -11,24 +11,51 @@ class TrackOptions(TypedDict, total=False):
     timestamp: str
 
 
+class CostEventAccepted(TypedDict):
+    status: Literal["accepted"]
+    cost_event_id: str
+
+
 class _CanResultRequired(TypedDict):
     allowed: bool
     used: int
-    cost_per_use_cents: int
-    revenue_per_use_cents: int
-    margin_per_use_cents: int
+
+
+class CanEconomics(TypedDict, total=False):
+    status: Literal["estimated", "not_configured", "unavailable", "stale"]
+    currency: str
+    estimated_incremental_cost: str
+    estimated_incremental_revenue: str
+    estimated_incremental_margin: str
+    estimated_margin_percent: str
+    rule_version_ids: List[str]
+    includes: List[str]
+    excludes: List[str]
+    reason: str
+    calculated_at: str
+
+
+class CanPolicy(TypedDict, total=False):
+    version_id: str
+    mode: Literal["allow", "warn", "deny"]
+    on_unavailable: Literal["allow", "warn", "deny"]
+    minimum_margin_amount: str
+    minimum_margin_percent: str
+    maximum_estimated_cost: str
+    maximum_snapshot_age_seconds: int
+    decision: Literal["allow", "warn", "deny"]
+    reason: str
 
 
 class CanResult(_CanResultRequired, total=False):
     reason: str
+    feature_type: str
+    configuration: Dict[str, str]
     limit: int
     remaining: int
     overage: bool
-    margin_percent: float
-    min_margin_percent: float
-    margin_level: str
-    margin_enforcement_mode: str
-    warning: str
+    economics: CanEconomics
+    policy: CanPolicy
 
 
 class Plan(TypedDict):

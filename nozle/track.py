@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 from typing import Optional
-from uuid import uuid4
 
 from nozle._transport import HttpTransport
 from nozle._validation import require_non_empty, require_secret_key
+from nozle.identifiers import create_transaction_id
 from nozle.types import JSONMapping
 
 
@@ -17,13 +17,14 @@ def track(
     subscription_id: Optional[str] = None,
     transaction_id: Optional[str] = None,
     timestamp: Optional[str] = None,
-) -> None:
+) -> str:
     operation = "track"
     require_secret_key(api_key, operation)
     require_non_empty(customer_id, "customer_id", operation)
     require_non_empty(event, "event", operation)
+    resolved_transaction_id = transaction_id or create_transaction_id()
     body = {
-        "transaction_id": transaction_id or str(uuid4()),
+        "transaction_id": resolved_transaction_id,
         "external_customer_id": customer_id,
         "code": event,
         "properties": metadata or {},
@@ -42,3 +43,4 @@ def track(
         json_body={"event": body},
         expect_json=False,
     )
+    return resolved_transaction_id

@@ -1,5 +1,6 @@
 from nozle._version import __version__
 from nozle.client import Nozle
+from nozle.cost_events import CostEventsNamespace
 from nozle.credit_systems import CreditSystemsNamespace
 from nozle.credits import CreditsNamespace
 from nozle.customers import CustomersNamespace
@@ -12,6 +13,7 @@ from nozle.errors import (
     NozleTransportError,
     NozleValidationError,
 )
+from nozle.events import EventsNamespace
 from nozle.integrations import NozleTrackingWarning
 from nozle.integrations.anthropic import wrap_anthropic
 from nozle.integrations.openai import wrap_openai
@@ -23,6 +25,7 @@ from nozle.types import (
     CheckAndDeductResult,
     CheckoutResult,
     CompletedCheckoutResult,
+    CostEventAccepted,
     CreditBalance,
     CreditBalances,
     CreditBalanceSource,
@@ -82,6 +85,8 @@ __all__ = [
     "CancelSubscriptionResult",
     "CanResult",
     "CheckAndDeductResult",
+    "CostEventAccepted",
+    "CostEventsNamespace",
     "CheckoutResult",
     "CompletedCheckoutResult",
     "CreditBalance",
@@ -112,6 +117,7 @@ __all__ = [
     "EntityCreditTransferSource",
     "EntitiesNamespace",
     "EntitySubscriptionsNamespace",
+    "EventsNamespace",
     "EntitySubscription",
     "EntitySubscriptionCancelResult",
     "EntitySubscriptionCheckoutItem",

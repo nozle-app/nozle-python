@@ -8,6 +8,7 @@ from unittest.mock import Mock
 import pytest
 
 from nozle import NozleTrackingWarning, wrap_anthropic, wrap_openai
+from nozle.integrations._common import normalize_anthropic_usage, normalize_openai_usage
 
 
 def client_with_create(create: Any, provider: str) -> Any:
@@ -18,7 +19,7 @@ def client_with_create(create: Any, provider: str) -> Any:
 
 
 def assert_tracking_contract(
-    track: Mock, model: str, input_tokens: int, output_tokens: int
+    track: Mock, provider: str, model: str, input_tokens: int, output_tokens: int
 ) -> None:
     track.assert_called_once()
     customer_id, metric_code = track.call_args.args
@@ -26,6 +27,7 @@ def assert_tracking_contract(
     assert customer_id == "cust_1"
     assert metric_code == "llm_tokens"
     assert properties == {
+        "provider": provider,
         "model": model,
         "input_tokens": input_tokens,
         "output_tokens": output_tokens,
@@ -48,7 +50,7 @@ def test_openai_sync_response_tracks_node_event_properties() -> None:
     returned = provider.chat.completions.create(model="gpt-5")
 
     assert returned is response
-    assert_tracking_contract(tracker.track, "gpt-5", 11, 7)
+    assert_tracking_contract(tracker.track, "openai", "gpt-5", 11, 7)
 
 
 def test_openai_sync_stream_tracks_usage_from_final_chunk() -> None:
@@ -56,14 +58,16 @@ def test_openai_sync_stream_tracks_usage_from_final_chunk() -> None:
         SimpleNamespace(usage=None),
         SimpleNamespace(usage=SimpleNamespace(prompt_tokens=13, completion_tokens=9)),
     ]
-    provider = client_with_create(lambda **_: iter(chunks), "openai")
+    create = Mock(side_effect=lambda **_: iter(chunks))
+    provider = client_with_create(create, "openai")
     tracker = SimpleNamespace(track=Mock())
     wrap_openai(provider, tracker, customer_id="cust_1", feature="assistant")
 
     returned = list(provider.chat.completions.create(model="gpt-stream", stream=True))
 
     assert returned == chunks
-    assert_tracking_contract(tracker.track, "gpt-stream", 13, 9)
+    assert_tracking_contract(tracker.track, "openai", "gpt-stream", 13, 9)
+    assert create.call_args.kwargs["stream_options"] == {"include_usage": True}
 
 
 @pytest.mark.asyncio
@@ -83,7 +87,7 @@ async def test_openai_async_response_tracks_without_corrupting_result() -> None:
     returned = await provider.chat.completions.create(model="gpt-async")
 
     assert returned is response
-    assert_tracking_contract(tracker.track, "gpt-async", 17, 5)
+    assert_tracking_contract(tracker.track, "openai", "gpt-async", 17, 5)
 
 
 @pytest.mark.asyncio
@@ -108,7 +112,7 @@ async def test_openai_async_stream_tracks_final_usage() -> None:
     returned = [chunk async for chunk in returned_stream]
 
     assert returned == chunks
-    assert_tracking_contract(tracker.track, "gpt-stream", 19, 8)
+    assert_tracking_contract(tracker.track, "openai", "gpt-stream", 19, 8)
 
 
 def test_anthropic_sync_response_tracks_node_event_properties() -> None:
@@ -123,7 +127,7 @@ def test_anthropic_sync_response_tracks_node_event_properties() -> None:
     returned = provider.messages.create(model="claude-sonnet")
 
     assert returned is response
-    assert_tracking_contract(tracker.track, "claude-sonnet", 23, 12)
+    assert_tracking_contract(tracker.track, "anthropic", "claude-sonnet", 23, 12)
 
 
 def test_anthropic_sync_stream_tracks_start_and_delta_usage() -> None:
@@ -141,7 +145,7 @@ def test_anthropic_sync_stream_tracks_start_and_delta_usage() -> None:
     returned = list(provider.messages.create(model="claude-stream", stream=True))
 
     assert returned == events
-    assert_tracking_contract(tracker.track, "claude-stream", 29, 14)
+    assert_tracking_contract(tracker.track, "anthropic", "claude-stream", 29, 14)
 
 
 @pytest.mark.asyncio
@@ -164,7 +168,7 @@ async def test_anthropic_async_response_and_stream_are_supported() -> None:
     )
     returned = await response_provider.messages.create(model="claude-async")
     assert returned is response
-    assert_tracking_contract(response_tracker.track, "claude-async", 31, 16)
+    assert_tracking_contract(response_tracker.track, "anthropic", "claude-async", 31, 16)
 
     events = [
         {
@@ -191,7 +195,7 @@ async def test_anthropic_async_response_and_stream_are_supported() -> None:
     )
     returned_stream = await stream_provider.messages.create(model="claude-stream", stream=True)
     assert [event async for event in returned_stream] == events
-    assert_tracking_contract(stream_tracker.track, "claude-stream", 37, 18)
+    assert_tracking_contract(stream_tracker.track, "anthropic", "claude-stream", 37, 18)
 
 
 def test_tracking_failure_warns_without_changing_successful_llm_response() -> None:
@@ -237,3 +241,116 @@ def test_provider_failure_is_propagated_without_tracking() -> None:
     with pytest.raises(RuntimeError, match="provider unavailable"):
         provider.messages.create(model="claude")
     tracker.track.assert_not_called()
+
+
+def cost_tracker() -> Any:
+    return SimpleNamespace(
+        events=SimpleNamespace(create_transaction_id=Mock(return_value="txn_123")),
+        track=Mock(return_value="txn_123"),
+        cost_events=SimpleNamespace(track=Mock(return_value={"status": "accepted"})),
+    )
+
+
+def test_openai_usage_normalizer_splits_cached_and_reasoning_tokens() -> None:
+    usage = normalize_openai_usage(
+        {
+            "prompt_tokens": 100,
+            "completion_tokens": 40,
+            "prompt_tokens_details": {"cached_tokens": 25},
+            "completion_tokens_details": {"reasoning_tokens": 10},
+        }
+    )
+
+    assert usage.feature_input_tokens == 100
+    assert usage.feature_output_tokens == 40
+    assert usage.categories == (
+        ("input", 75),
+        ("cached_input", 25),
+        ("output", 30),
+        ("reasoning", 10),
+    )
+
+
+def test_anthropic_usage_normalizer_preserves_cache_categories() -> None:
+    usage = normalize_anthropic_usage(
+        {
+            "input_tokens": 70,
+            "cache_read_input_tokens": 20,
+            "cache_creation_input_tokens": 10,
+            "output_tokens": 15,
+        }
+    )
+
+    assert usage.feature_input_tokens == 100
+    assert usage.feature_output_tokens == 15
+    assert usage.categories == (
+        ("input", 70),
+        ("cached_input", 20),
+        ("cache_write", 10),
+        ("output", 15),
+    )
+
+
+def test_openai_wrapper_links_detailed_cost_events_to_feature_event() -> None:
+    response = SimpleNamespace(
+        id="openai_request_1",
+        model="gpt-test",
+        usage=SimpleNamespace(
+            prompt_tokens=100,
+            completion_tokens=20,
+            prompt_tokens_details=SimpleNamespace(cached_tokens=25),
+        ),
+    )
+    provider = client_with_create(lambda **_: response, "openai")
+    tracker = cost_tracker()
+    wrap_openai(
+        provider,
+        tracker,
+        customer_id="cust_1",
+        metric_code="copilot_action",
+        cost_meter_code="ai_tokens",
+    )
+
+    assert provider.chat.completions.create(model="gpt-test") is response
+    tracker.track.assert_called_once()
+    assert tracker.track.call_args.kwargs["transaction_id"] == "txn_123"
+    assert tracker.track.call_args.kwargs["metadata"]["provider"] == "openai"
+    assert tracker.cost_events.track.call_count == 3
+    first_cost = tracker.cost_events.track.call_args_list[0].kwargs
+    assert first_cost["parent_transaction_id"] == "txn_123"
+    assert first_cost["request_id"] == "openai_request_1"
+    assert first_cost["operation_key"] == "input"
+    assert first_cost["properties"] == {
+        "tokens": 75,
+        "provider": "openai",
+        "model": "gpt-test",
+        "type": "input",
+    }
+
+
+def test_anthropic_wrapper_emits_cache_read_and_write_cost_events() -> None:
+    response = SimpleNamespace(
+        id="anthropic_request_1",
+        model="claude-test",
+        usage=SimpleNamespace(
+            input_tokens=50,
+            cache_read_input_tokens=30,
+            cache_creation_input_tokens=20,
+            output_tokens=10,
+        ),
+    )
+    provider = client_with_create(lambda **_: response, "anthropic")
+    tracker = cost_tracker()
+    wrap_anthropic(
+        provider,
+        tracker,
+        customer_id="cust_1",
+        cost_meter_code="ai_tokens",
+    )
+
+    assert provider.messages.create(model="claude-test") is response
+    assert tracker.cost_events.track.call_count == 4
+    operation_keys = {
+        call.kwargs["operation_key"] for call in tracker.cost_events.track.call_args_list
+    }
+    assert operation_keys == {"input", "cached_input", "cache_write", "output"}

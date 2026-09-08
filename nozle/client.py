@@ -13,12 +13,14 @@ from nozle._validation import (
     require_secret_key,
 )
 from nozle.can import can as _can
+from nozle.cost_events import CostEventsNamespace
 from nozle.credit_systems import CreditSystemsNamespace
 from nozle.credits import CreditsNamespace
 from nozle.customers import CustomersNamespace
 from nozle.entities import EntitiesNamespace
 from nozle.entity_subscriptions import EntitySubscriptionsNamespace
 from nozle.errors import NozleAPIError, NozleValidationError
+from nozle.events import EventsNamespace
 from nozle.margin import MarginClient
 from nozle.track import track as _track
 from nozle.types import (
@@ -66,6 +68,8 @@ class Nozle:
         self.margin = MarginClient(
             self.base_url, self.api_key, timeout=self.timeout, _transport=self._engine
         )
+        self.events = EventsNamespace()
+        self.cost_events = CostEventsNamespace(self._engine, self.api_key)
         self.customers = CustomersNamespace(self._events, self.api_key)
         self.credit_systems = CreditSystemsNamespace(self._events, self.api_key)
         self.credits = CreditsNamespace(self._engine, self.api_key)
@@ -82,11 +86,11 @@ class Nozle:
         subscription_id: Optional[str] = None,
         transaction_id: Optional[str] = None,
         timestamp: Optional[str] = None,
-    ) -> None:
+    ) -> str:
         require_secret_key(self.api_key, "track")
         if not subscription_id:
             subscription_id = self._resolve_subscription(customer_id)
-        _track(
+        return _track(
             self._events,
             self.api_key,
             customer_id,
