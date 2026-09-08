@@ -56,7 +56,7 @@ jobs:
           import importlib.resources
           import nozle
 
-          assert nozle.__version__ == "0.6.0"
+          assert nozle.__version__ == "0.6.1"
           assert importlib.metadata.version("nozle-sdk") == nozle.__version__
           assert importlib.resources.files("nozle").joinpath("py.typed").is_file()
           for name in nozle.__all__:
